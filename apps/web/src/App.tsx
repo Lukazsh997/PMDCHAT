@@ -1,25 +1,48 @@
 import { Navigate, Route, Routes } from 'react-router';
+import { Toaster } from './components/ui';
 import { AccountPage } from './features/account/AccountPage';
+import { AdminLayout } from './features/admin/AdminLayout';
+import { AuditPage } from './features/admin/AuditPage';
+import { OrgPage } from './features/admin/OrgPage';
+import { OverviewPage } from './features/admin/OverviewPage';
+import { UsersPage } from './features/admin/UsersPage';
 import { LoginPage } from './features/auth/LoginPage';
 import { RequireAuth } from './features/auth/RequireAuth';
+import { ChatPage } from './features/chat/ChatPage';
 import { AppShell } from './features/shell/AppShell';
-import { ConversationsPage } from './features/shell/ConversationsPage';
 
 export function App() {
   return (
-    <Routes>
-      <Route path="/entrar" element={<LoginPage />} />
-      <Route
-        element={
-          <RequireAuth>
-            <AppShell />
-          </RequireAuth>
-        }
-      >
-        <Route index element={<ConversationsPage />} />
-        <Route path="conta" element={<AccountPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/entrar" element={<LoginPage />} />
+        <Route
+          element={
+            <RequireAuth>
+              <AppShell />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<ChatPage />} />
+          <Route path="c/:conversationId" element={<ChatPage />} />
+          <Route
+            path="conta"
+            element={
+              <div className="h-full overflow-y-auto">
+                <AccountPage />
+              </div>
+            }
+          />
+          <Route path="admin" element={<AdminLayout />}>
+            <Route index element={<OverviewPage />} />
+            <Route path="usuarios" element={<UsersPage />} />
+            <Route path="organograma" element={<OrgPage />} />
+            <Route path="auditoria" element={<AuditPage />} />
+          </Route>
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <Toaster />
+    </>
   );
 }

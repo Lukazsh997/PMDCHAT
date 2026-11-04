@@ -52,3 +52,53 @@ export async function api<T>(method: Method, path: string, body?: unknown): Prom
 function isApiError(v: unknown): v is ApiError {
   return typeof v === 'object' && v !== null && 'code' in v && 'message' in v;
 }
+
+/** Upload com progresso (fetch ainda não informa progresso de envio). */
+export function uploadFile<T>(
+  path: string,
+  file: File,
+  onProgress?: (fraction: number) => void,
+  signal?: AbortSignal,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_PREFIX}${path}`);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+    xhr.onload = () => {
+      let data: unknown = null;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        /* resposta sem corpo */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as T);
+      else
+        reject(
+          new ApiRequestError(
+            isApiError(data)
+              ? data
+              : {
+                  statusCode: xhr.status,
+                  code: 'INTERNAL_ERROR',
+                  message:
+                    xhr.status === 413 ? 'Arquivo grande demais.' : 'Falha ao enviar o arquivo.',
+                },
+          ),
+        );
+    };
+    xhr.onerror = () =>
+      reject(
+        new ApiRequestError({
+          statusCode: 0,
+          code: 'INTERNAL_ERROR',
+          message: 'Sem conexão com o servidor.',
+        }),
+      );
+    xhr.onabort = () => reject(new DOMException('cancelado', 'AbortError'));
+    signal?.addEventListener('abort', () => xhr.abort());
+    const form = new FormData();
+    form.append('file', file);
+    xhr.send(form);
+  });
+}

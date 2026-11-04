@@ -4,6 +4,7 @@ import { Alert, Avatar, Button, Spinner } from '@/components/ui';
 import { describeUserAgent, formatDateTime } from '@/lib/format';
 import { useMe, useRevokeSession, useSessions } from '../auth/auth-api';
 import { ChangePasswordForm } from '../auth/ChangePasswordForm';
+import { MfaSection } from './MfaSection';
 
 export function AccountPage() {
   const me = useMe();
@@ -17,8 +18,7 @@ export function AccountPage() {
         <div className="min-w-0">
           <h1 className="truncate text-xl font-bold">{user.displayName}</h1>
           <p className="text-sm text-muted">
-            {user.username}
-            {user.jobTitle ? `, ${user.jobTitle}` : ''}
+            {[user.username, user.jobTitle, user.orgUnit?.name].filter(Boolean).join(', ')}
           </p>
         </div>
       </header>
@@ -31,6 +31,15 @@ export function AccountPage() {
           <div className="max-w-sm">
             <ChangePasswordForm />
           </div>
+        </Section>
+      )}
+
+      {user.authSource === 'local' && (
+        <Section
+          title="Verificação em duas etapas"
+          description="Além da senha, pede um código do seu celular ao entrar. Protege a conta mesmo se a senha vazar."
+        >
+          <MfaSection />
         </Section>
       )}
 

@@ -6,7 +6,7 @@
 | ------- | ------------------------------------------------------ | ------------------------------------------------- |
 | Sistema | Debian 12/13, Ubuntu Server 24.04 LTS ou Rocky Linux 9 | —                                                 |
 | vCPU    | 2                                                      | 4                                                 |
-| RAM     | 4 GB                                                   | 8 GB                                              |
+| RAM     | 4 GB (6 GB com antivírus)                              | 8 GB                                              |
 | Disco   | 40 GB SSD                                              | 100 GB SSD + volume separado para anexos (fase 1) |
 
 Software: Docker Engine 24+ com o plugin `docker compose`, `git` e `openssl`.
@@ -33,6 +33,27 @@ docker save plataforma/api:0.1.0 plataforma/web:0.1.0 postgres:17-alpine valkey/
 gunzip -c plataforma-0.1.0.tar.gz | docker load && docker compose up -d
 ```
 
+## Antivírus (ClamAV)
+
+Os anexos passam pelo ClamAV antes de serem aceitos. O serviço `clamav` usa cerca de 1,5 GB de
+RAM e, na primeira subida, baixa as assinaturas de vírus da internet (alguns minutos). Depois as
+atualiza sozinho. Enquanto ele não estiver pronto, os uploads são recusados com a mensagem
+"verificação antivírus indisponível".
+
+Para desativar (não recomendado), no `.env`: `COMPOSE_PROFILES=` e `CLAMAV_HOST=` (vazios).
+
+## Atualizar de uma versão anterior
+
+```bash
+git pull
+infra/scripts/update.sh
+```
+
+O `update.sh` faz backup, acrescenta ao `.env` as variáveis novas (como `APP_SECRET`, gerada
+automaticamente), reconstrói as imagens e aplica as migrações do banco. Na passagem da Fase 0
+para a Fase 1, o usuário `admin` vira super administrador e precisa ativar a verificação em
+duas etapas em "Minha conta" para usar o painel.
+
 ## Endereço de acesso e `APP_ORIGINS`
 
 O sistema aceita login por qualquer endereço que chegue à VM: nome DNS, IP ou outra porta.
@@ -53,15 +74,16 @@ acima ficam bloqueados pelo navegador.
 
 ## Operação
 
-| Tarefa                  | Comando                                                               |
-| ----------------------- | --------------------------------------------------------------------- |
-| Ver estado dos serviços | `docker compose ps`                                                   |
-| Logs da API             | `docker compose logs -f api`                                          |
-| Saúde                   | `curl http://<endereço>/api/v1/health`                                |
-| Backup do banco         | `infra/scripts/backup.sh` (agende no cron, ex.: diariamente às 02:30) |
-| Restaurar backup        | `infra/scripts/restore.sh backups/db-AAAAMMDD-HHMMSS.dump`            |
-| Atualizar versão        | `infra/scripts/update.sh`                                             |
-| Senha temporária        | `docker compose run --rm api cli reset-password <usuário>`            |
+| Tarefa                       | Comando                                                               |
+| ---------------------------- | --------------------------------------------------------------------- |
+| Ver estado dos serviços      | `docker compose ps`                                                   |
+| Logs da API                  | `docker compose logs -f api`                                          |
+| Saúde                        | `curl http://<endereço>/api/v1/health`                                |
+| Backup do banco e dos anexos | `infra/scripts/backup.sh` (agende no cron, ex.: diariamente às 02:30) |
+| Restaurar backup             | `infra/scripts/restore.sh backups/db-….dump backups/files-….tar.gz`   |
+| Redefinir duas etapas        | `docker compose run --rm api cli reset-mfa <usuário>`                 |
+| Atualizar versão             | `infra/scripts/update.sh`                                             |
+| Senha temporária             | `docker compose run --rm api cli reset-password <usuário>`            |
 
 Backups ficam em `./backups` por 14 dias (`BACKUP_DIR` e `BACKUP_KEEP_DAYS` alteram isso).
 Copie-os para outro servidor; um backup na mesma VM não protege contra perda do disco.

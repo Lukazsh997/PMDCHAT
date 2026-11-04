@@ -25,6 +25,11 @@
   --color-danger-soft: #fbeceb;
   --color-ok: #2e7d4f;
   --color-ok-soft: #e8f3ec;
+  --color-bubble-own: #d9ece8;
+  --color-bubble-other: #ffffff;
+  --color-chat-bg: #eef1ee;
+  --color-ipe-soft: #fbefd5;
+  --color-read: #1a6fd1;
 
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
@@ -52,6 +57,11 @@
       --color-primary-ink: #0a2d2e;
       --color-danger-soft: #3a1d1b;
       --color-ok-soft: #173024;
+      --color-bubble-own: #1f3d3c;
+      --color-bubble-other: #1e2a30;
+      --color-chat-bg: #10171a;
+      --color-ipe-soft: #3a2e14;
+      --color-read: #6aaef5;
     }
   }
 
@@ -82,5 +92,16 @@
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+@layer components {
+  /* Mensagens fora da tela não são desenhadas: mantém a rolagem leve em PCs modestos. */
+  .msg-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+  }
+  dialog::backdrop {
+    background: rgb(10 20 24 / 0.45);
   }
 }

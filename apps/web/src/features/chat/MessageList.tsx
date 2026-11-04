@@ -1,0 +1,305 @@
+import { type ConversationDetail, MESSAGE_RULES } from '@plataforma/contracts';
+import {
+  AlertCircle,
+  ArrowDown,
+  Check,
+  CheckCheck,
+  Clock,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Menu, Spinner } from '@/components/ui';
+import { formatDayLabel, formatTime, sameDay } from '@/lib/format';
+import { useNow } from '@/lib/use-now';
+import { Attachments } from './Attachments';
+import type { ChatMessage } from './chat-api';
+import { MessageText } from './MessageText';
+import { systemText } from './system-text';
+
+const GROUP_GAP_MS = 5 * 60_000;
+
+export interface MessageActions {
+  onEdit: (m: ChatMessage) => void;
+  onDelete: (m: ChatMessage) => void;
+  onRetry: (m: ChatMessage) => void;
+}
+
+export function MessageList({
+  items,
+  hasMore,
+  loadOlder,
+  detail,
+  meId,
+  canModerate,
+  actions,
+}: {
+  items: ChatMessage[];
+  hasMore: boolean;
+  loadOlder: () => Promise<void>;
+  detail: ConversationDetail | undefined;
+  meId: string;
+  canModerate: boolean;
+  actions: MessageActions;
+}) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const now = useNow();
+  const [atBottom, setAtBottom] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const prevHeight = useRef<number | null>(null);
+  const content = useRef<HTMLOListElement>(null);
+  const stick = useRef(true);
+  const lastId = items.at(-1)?.id;
+
+  const nameOf = (id: string) => detail?.members.find((m) => m.id === id)?.displayName ?? 'Alguém';
+  const isGroup = detail?.type === 'group';
+  const amAdmin = detail?.myRole === 'owner' || detail?.myRole === 'admin';
+  const others = detail?.members.filter((m) => m.id !== meId) ?? [];
+  const readByAll = (seq: number) => others.length > 0 && others.every((m) => m.lastReadSeq >= seq);
+
+  // Mantém a posição ao carregar mensagens antigas; desce ao chegar mensagem nova.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    if (prevHeight.current !== null) {
+      el.scrollTop += el.scrollHeight - prevHeight.current;
+      prevHeight.current = null;
+      return;
+    }
+    const mine = items.at(-1)?.senderId === meId;
+    if (stick.current || mine) {
+      stick.current = true;
+      el.scrollTop = el.scrollHeight;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só quando muda a última mensagem
+  }, [lastId]);
+
+  // Imagens e anexos mudam a altura depois de carregar: quem estava no fim continua no fim.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || !content.current) return;
+    el.scrollTop = el.scrollHeight;
+    const ro = new ResizeObserver(() => {
+      if (stick.current && prevHeight.current === null) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(content.current);
+    return () => ro.disconnect();
+  }, []);
+
+  async function onScroll() {
+    const el = scroller.current;
+    if (!el) return;
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    stick.current = bottom;
+    setAtBottom(bottom);
+    if (el.scrollTop < 200 && hasMore && !loadingOlder) {
+      setLoadingOlder(true);
+      prevHeight.current = el.scrollHeight;
+      await loadOlder().finally(() => setLoadingOlder(false));
+    }
+  }
+
+  return (
+    <div className="relative min-h-0 flex-1">
+      <div
+        ref={scroller}
+        onScroll={() => void onScroll()}
+        className="h-full overflow-y-auto bg-chat-bg px-3 py-4 md:px-6"
+        role="log"
+        aria-label="Mensagens"
+        aria-live="polite"
+      >
+        {loadingOlder && (
+          <div className="flex justify-center py-2">
+            <Spinner size={16} />
+          </div>
+        )}
+        {!hasMore && items.length > 0 && (
+          <p className="py-3 text-center text-xs text-muted">Início da conversa</p>
+        )}
+        {items.length === 0 && (
+          <p className="mx-auto mt-10 max-w-xs text-center text-sm text-muted">
+            Nenhuma mensagem ainda. Escreva a primeira abaixo.
+          </p>
+        )}
+        <ol ref={content} className="mx-auto flex max-w-3xl flex-col">
+          {items.map((m, i) => {
+            const prev = items[i - 1];
+            const newDay = !prev || !sameDay(prev.createdAt, m.createdAt);
+            const continued =
+              !newDay &&
+              prev?.type === 'text' &&
+              prev.senderId === m.senderId &&
+              new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() < GROUP_GAP_MS;
+            return (
+              <Fragment key={m.id}>
+                {newDay && (
+                  <li className="sticky top-0 z-10 my-3 flex justify-center">
+                    <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-muted shadow-sm">
+                      {formatDayLabel(m.createdAt)}
+                    </span>
+                  </li>
+                )}
+                {m.type === 'system' && m.system ? (
+                  <li className="msg-row my-2 text-center text-xs text-muted">
+                    {systemText(m.system, nameOf, meId)}
+                  </li>
+                ) : (
+                  <Bubble
+                    m={m}
+                    mine={m.senderId === meId}
+                    showName={isGroup && !continued && m.senderId !== meId}
+                    name={m.senderId ? nameOf(m.senderId) : ''}
+                    continued={continued}
+                    read={readByAll(m.seq)}
+                    canDelete={m.senderId === meId || (isGroup && amAdmin) || canModerate}
+                    actions={actions}
+                    now={now}
+                  />
+                )}
+              </Fragment>
+            );
+          })}
+        </ol>
+      </div>
+      {!atBottom && (
+        <button
+          type="button"
+          onClick={() =>
+            scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' })
+          }
+          className="absolute right-5 bottom-4 flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-md hover:bg-paper"
+          aria-label="Ir para as mensagens mais recentes"
+        >
+          <ArrowDown size={18} aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Bubble({
+  m,
+  mine,
+  showName,
+  name,
+  continued,
+  read,
+  canDelete,
+  actions,
+  now,
+}: {
+  now: number;
+  m: ChatMessage;
+  mine: boolean;
+  showName: boolean;
+  name: string;
+  continued: boolean;
+  read: boolean;
+  canDelete: boolean;
+  actions: MessageActions;
+}) {
+  const deleted = !!m.deletedAt;
+  const editable =
+    mine &&
+    !deleted &&
+    !m.status &&
+    now - new Date(m.createdAt).getTime() < MESSAGE_RULES.editWindowMinutes * 60_000;
+  const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+  const menu = [
+    ...(editable
+      ? [
+          {
+            label: 'Editar',
+            icon: <Pencil size={15} aria-hidden="true" />,
+            onSelect: () => actions.onEdit(m),
+          },
+        ]
+      : []),
+    ...(canDelete && !deleted && !m.status
+      ? [
+          {
+            label: 'Apagar para todos',
+            icon: <Trash2 size={15} aria-hidden="true" />,
+            danger: true,
+            onSelect: () => actions.onDelete(m),
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <li
+      className={`msg-row group flex ${mine ? 'justify-end' : 'justify-start'} ${continued ? 'mt-0.5' : 'mt-2.5'}`}
+    >
+      <div
+        className={`flex max-w-[min(85%,36rem)] items-start gap-1 ${mine ? 'flex-row-reverse' : ''}`}
+      >
+        <div
+          className={`min-w-0 rounded-[14px] px-3 py-1.5 shadow-[0_1px_0_rgb(0_0_0/0.06)] ${mine ? 'bg-bubble-own' : 'bg-bubble-other'} ${
+            !continued ? (mine ? 'rounded-tr-[4px]' : 'rounded-tl-[4px]') : ''
+          } ${m.status === 'sending' ? 'opacity-80' : ''}`}
+        >
+          {showName && (
+            <p
+              className="mb-0.5 text-xs font-bold text-[hsl(var(--hue)_50%_36%)] dark:text-[hsl(var(--hue)_60%_72%)]"
+              style={{ '--hue': hue } as React.CSSProperties}
+            >
+              {name}
+            </p>
+          )}
+          {deleted ? (
+            <p className="text-sm text-muted italic">Mensagem apagada</p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {m.attachments.length > 0 && <Attachments items={m.attachments} />}
+              {m.body && <MessageText text={m.body} />}
+            </div>
+          )}
+          <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] leading-4 text-muted">
+            {m.editedAt && !deleted && <span>editada</span>}
+            <time dateTime={m.createdAt}>{formatTime(m.createdAt)}</time>
+            {mine && !deleted && <Status m={m} read={read} />}
+          </p>
+        </div>
+        {menu.length > 0 && (
+          <div className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+            <Menu
+              label="Ações da mensagem"
+              align={mine ? 'right' : 'left'}
+              items={menu}
+              trigger={(p) => (
+                <button
+                  type="button"
+                  {...p}
+                  aria-label="Ações da mensagem"
+                  className="rounded-full p-1 text-muted hover:bg-line/60 hover:text-ink"
+                >
+                  <MoreHorizontal size={16} aria-hidden="true" />
+                </button>
+              )}
+            />
+          </div>
+        )}
+      </div>
+      {m.status === 'failed' && (
+        <button
+          type="button"
+          onClick={() => actions.onRetry(m)}
+          className="ml-2 self-center text-xs font-semibold text-danger hover:underline"
+        >
+          Não enviada. Tentar de novo
+        </button>
+      )}
+    </li>
+  );
+}
+
+function Status({ m, read }: { m: ChatMessage; read: boolean }) {
+  if (m.status === 'sending') return <Clock size={13} aria-label="Enviando" />;
+  if (m.status === 'failed')
+    return <AlertCircle size={13} className="text-danger" aria-label="Falhou" />;
+  if (read) return <CheckCheck size={14} className="text-read" aria-label="Lida" />;
+  return <Check size={14} aria-label="Enviada" />;
+}
