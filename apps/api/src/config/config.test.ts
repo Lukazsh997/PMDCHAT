@@ -15,6 +15,16 @@ describe('loadConfig', () => {
     expect(c.SESSION_IDLE_MINUTES).toBe(480);
   });
 
+  it('tolera .env salvo no Windows (CRLF)', () => {
+    const c = loadConfig({ ...base, COOKIE_SECURE: 'false\r', SESSION_MAX_HOURS: '24\r' });
+    expect(c.COOKIE_SECURE).toBe(false);
+    expect(c.SESSION_MAX_HOURS).toBe(24);
+  });
+
+  it('explica como corrigir um endereço sem http://', () => {
+    expect(() => loadConfig({ ...base, APP_ORIGINS: '192.168.0.10' })).toThrow(/http:\/\//);
+  });
+
   it('explica o que está errado', () => {
     expect(() => loadConfig({ ...base, DATABASE_URL: 'mysql://x', APP_ORIGINS: '' })).toThrow(
       /DATABASE_URL[\s\S]*APP_ORIGINS/,

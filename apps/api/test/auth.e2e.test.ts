@@ -130,6 +130,25 @@ describe('proteção CSRF por origem', () => {
     expect(res.body?.code).toBe('INVALID_ORIGIN');
   });
 
+  it('aceita o próprio endereço do sistema sem configuração (IP, nome ou porta)', async () => {
+    const { password } = await createUser(ctx);
+    for (const host of ['192.168.0.10', 'chat.orgao.local', '10.0.0.5:8080']) {
+      const res = await call(ctx, 'POST', '/auth/login', {
+        body: { username: 'maria.silva', password },
+        headers: { host, origin: `http://${host}` },
+      });
+      expect(res.status, host).toBe(200);
+    }
+  });
+
+  it('recusa site de terceiros mesmo que aponte para o endereço do sistema', async () => {
+    const res = await call(ctx, 'POST', '/auth/login', {
+      body: { username: 'x', password: 'y' },
+      headers: { host: '192.168.0.10', origin: 'http://192.168.0.10.evil.test' },
+    });
+    expect(res.status).toBe(403);
+  });
+
   it('aceita a origem configurada', async () => {
     const { password } = await createUser(ctx);
     const cookie = await login(ctx, 'maria.silva', password);

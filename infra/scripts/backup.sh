@@ -4,7 +4,6 @@
 # Os arquivos anexos (fase 1) entram neste script quando o volume existir.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-set -a; source .env; set +a
 
 DEST="${BACKUP_DIR:-./backups}"
 KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
@@ -12,7 +11,8 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 mkdir -p "$DEST"
 
 FILE="$DEST/db-$STAMP.dump"
-docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc > "$FILE.partial"
+# Usuário e banco vêm das variáveis do próprio contêiner do PostgreSQL.
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$FILE.partial"
 mv "$FILE.partial" "$FILE"
 echo "Backup do banco: $FILE ($(du -h "$FILE" | cut -f1))"
 

@@ -35,12 +35,9 @@ gunzip -c plataforma-0.1.0.tar.gz | docker load && docker compose up -d
 
 ## Endereço de acesso e `APP_ORIGINS`
 
-A API recusa alterações vindas de origens não listadas em `APP_ORIGINS` (proteção CSRF). Liste
-todos os endereços que os usuários digitarão no navegador, por exemplo:
-
-```
-APP_ORIGINS=http://chat.orgao.local,http://10.0.0.25
-```
+O sistema aceita login por qualquer endereço que chegue à VM: nome DNS, IP ou outra porta.
+A API só recusa alterações vindas de **outros sites** (proteção CSRF). `APP_ORIGINS` serve
+para registrar o endereço principal e origens extras, como o servidor de desenvolvimento.
 
 ## Política do Chrome para HTTP (obrigatória para notificações)
 
@@ -68,6 +65,21 @@ acima ficam bloqueados pelo navegador.
 
 Backups ficam em `./backups` por 14 dias (`BACKUP_DIR` e `BACKUP_KEEP_DAYS` alteram isso).
 Copie-os para outro servidor; um backup na mesma VM não protege contra perda do disco.
+
+## Solução de problemas
+
+**`dependency failed to start: container plataforma-api-1 is unhealthy`**: a API não
+conseguiu iniciar. O `install.sh` mostra as últimas linhas do log; manualmente:
+`docker compose logs --tail 50 api`. Causas comuns:
+
+| Mensagem no log                                                                | Causa e correção                                                                                                                                                                          |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Configuração inválida: APP_ORIGINS…`                                          | Endereço sem `http://` no `.env`. Corrija para `APP_ORIGINS=http://192.168.0.10` e rode `docker compose up -d`                                                                            |
+| `exec api-entrypoint failed: Permission denied` ou `No such file or directory` | Script sem permissão de execução ou com quebras de linha do Windows, numa imagem antiga. Atualize o código e rode `docker compose build --no-cache` (a imagem atual corrige isso sozinha) |
+| `ECONNREFUSED … 5432` ou `password authentication failed`                      | O volume do banco foi criado com outra senha. Se ainda não há dados: `docker compose down -v` e instale de novo                                                                           |
+
+Para editar o projeto no Windows, mantenha as quebras de linha Unix (LF). O arquivo
+`.gitattributes` já faz isso no Git; no editor, use LF para `.sh`, `.env` e `.conf`.
 
 ## Ativar HTTPS depois
 

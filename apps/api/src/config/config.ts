@@ -9,6 +9,13 @@ const csv = z.string().transform((v) =>
     .filter(Boolean),
 );
 
+const origin = z
+  .string()
+  .regex(
+    /^https?:\/\/[^/\s]+$/,
+    'use o endereço completo com http:// (ex.: http://chat.orgao.local ou http://192.168.0.10)',
+  );
+
 /**
  * Variáveis de ambiente validadas na inicialização. Se algo estiver faltando ou
  * inválido, o processo não sobe e informa exatamente o que corrigir.
@@ -25,7 +32,7 @@ export const configSchema = z.object({
   REDIS_URL: z.url({ protocol: /^rediss?$/ }),
 
   /** Origens autorizadas a chamar a API pelo navegador (proteção CSRF). */
-  APP_ORIGINS: csv.pipe(z.array(z.url()).min(1, 'Informe ao menos uma origem em APP_ORIGINS')),
+  APP_ORIGINS: csv.pipe(z.array(origin).min(1, 'Informe ao menos uma origem em APP_ORIGINS')),
   /** Número de proxies confiáveis à frente da API (Nginx = 1). */
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(1),
 
@@ -49,7 +56,11 @@ export type AppConfig = z.infer<typeof configSchema>;
 export const APP_CONFIG = Symbol('APP_CONFIG');
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const parsed = configSchema.safeParse(env);
+  // Remove espaços e \r finais: um .env salvo no Windows (CRLF) não deve derrubar o sistema.
+  const clean = Object.fromEntries(
+    Object.entries(env).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]),
+  );
+  const parsed = configSchema.safeParse(clean);
   if (!parsed.success) {
     const lines = parsed.error.issues.map(
       (i) => `  - ${i.path.join('.') || '(raiz)'}: ${i.message}`,

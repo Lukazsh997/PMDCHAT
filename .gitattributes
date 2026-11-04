@@ -1,0 +1,6 @@
+# Mantém quebras de linha Unix (LF) em todo o repositório, inclusive quando clonado
+# ou editado no Windows. Scripts e arquivos de configuração com CRLF quebram no Linux.
+* text=auto eol=lf
+*.sh text eol=lf
+*.png binary
+*.woff2 binary

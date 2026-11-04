@@ -1,42 +1,69 @@
 #!/usr/bin/env bash
 # Primeira instalação na VM: verifica pré-requisitos, gera o .env com senhas
-# aleatórias e sobe a plataforma.
+# aleatórias e sobe a plataforma. Pode ser executado de novo com segurança.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 command -v docker >/dev/null || { echo "Docker não encontrado. Instale o Docker Engine primeiro."; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "Plugin 'docker compose' não encontrado."; exit 1; }
 
+# Normaliza um endereço digitado: acrescenta http:// e remove a barra final.
+normalize_url() {
+  local u="${1//[[:space:]]/}"
+  u="${u%/}"
+  [[ "$u" =~ ^https?:// ]] || u="http://$u"
+  printf '%s' "$u"
+}
+
 if [[ ! -f .env ]]; then
-  read -rp "Endereço de acesso (ex.: http://chat.orgao.local): " url
+  read -rp "Endereço de acesso (ex.: http://chat.orgao.local ou http://192.168.0.10): " url
+  url=$(normalize_url "$url")
   read -rp "Nome da organização exibido no login: " org
-  # Escapa caracteres especiais do sed no nome digitado.
+  # Remove caracteres que quebrariam o .env ou o sed.
+  org=$(printf '%s' "$org" | tr -d '"$`\\|\r')
   org=${org//&/\\&}
-  org=${org//|/-}
-  db_pass=$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)
-  admin_pass="Admin$(openssl rand -base64 12 | tr -d '/+=' | cut -c1-10)9"
-  sed -e "s|^APP_ORIGINS=.*|APP_ORIGINS=${url%/}|" \
-      -e "s|^ORG_NAME=.*|ORG_NAME=${org}|" \
+  db_pass=$(openssl rand -hex 16)
+  admin_pass="Admin$(openssl rand -hex 5)9"
+  tr -d '\r' < .env.example | sed \
+      -e "s|^APP_ORIGINS=.*|APP_ORIGINS=${url}|" \
+      -e "s|^ORG_NAME=.*|ORG_NAME=\"${org}\"|" \
       -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${db_pass}|" \
       -e "s|^DATABASE_URL=.*|DATABASE_URL=postgres://plataforma:${db_pass}@localhost:5432/plataforma|" \
       -e "s|^BOOTSTRAP_ADMIN_PASSWORD=.*|BOOTSTRAP_ADMIN_PASSWORD=${admin_pass}|" \
       -e "s|^NODE_ENV=.*|NODE_ENV=production|" \
-      .env.example > .env
+      > .env
   chmod 600 .env
   echo
-  echo "Arquivo .env criado. Senha provisória do usuário 'admin': ${admin_pass}"
+  echo "Arquivo .env criado. Endereço de acesso: ${url}"
+  echo "Senha provisória do usuário 'admin': ${admin_pass}"
   echo "Ela será trocada no primeiro acesso. Guarde-a agora."
   echo
+else
+  # .env já existe (ex.: instalação anterior). Remove CRLF, se houver.
+  if grep -q $'\r' .env; then
+    sed -i 's/\r$//' .env
+    echo "Quebras de linha do Windows removidas do .env."
+  fi
 fi
 
-docker compose up -d --build
-echo "Aguardando a API ficar pronta…"
-for _ in $(seq 1 60); do
-  if docker compose exec -T api wget -qO- http://127.0.0.1:3000/api/v1/health >/dev/null 2>&1; then
-    echo "Plataforma no ar."
-    exit 0
+# Confere APP_ORIGINS antes de subir, para não falhar dentro do contêiner.
+origins=$(grep -E '^APP_ORIGINS=' .env | cut -d= -f2- | tr -d '"')
+IFS=',' read -ra list <<< "$origins"
+for o in "${list[@]}"; do
+  if ! [[ "$o" =~ ^https?://[^/[:space:]]+$ ]]; then
+    echo "APP_ORIGINS inválido no .env: '$o'"
+    echo "Use o endereço completo, ex.: APP_ORIGINS=http://192.168.0.10"
+    exit 1
   fi
-  sleep 2
 done
-echo "A API não respondeu em 2 minutos. Veja: docker compose logs api"
-exit 1
+
+if ! docker compose up -d --build --wait --wait-timeout 180; then
+  echo
+  echo "A plataforma não subiu. Últimas linhas do log da API:"
+  echo "--------------------------------------------------------------"
+  docker compose logs --tail 40 api || true
+  echo "--------------------------------------------------------------"
+  echo "Corrija o problema indicado acima e rode este script novamente."
+  exit 1
+fi
+echo "Plataforma no ar: ${origins%%,*}"
