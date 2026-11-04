@@ -1,0 +1,86 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/atkinson-hyperlegible-next';
+
+/*
+ * Tokens do design system.
+ * Petróleo (rail) dá a identidade institucional e calma; o amarelo-ipê é reservado
+ * ao que pede atenção (não lidas, menções, foco sobre fundo escuro). Nada mais usa cor.
+ */
+@theme {
+  --font-sans: 'Atkinson Hyperlegible Next Variable', system-ui, 'Segoe UI', sans-serif;
+
+  --color-paper: #f7f8f6;
+  --color-surface: #ffffff;
+  --color-ink: #1c2b36;
+  --color-muted: #5e6b70;
+  --color-line: #d9ded9;
+  --color-rail: #0f3d3e;
+  --color-rail-strong: #0a2d2e;
+  --color-rail-ink: #e7efed;
+  --color-ipe: #e3a82b;
+  --color-primary: #0f3d3e;
+  --color-primary-strong: #0a2d2e;
+  --color-primary-ink: #ffffff;
+  --color-danger: #b3261e;
+  --color-danger-soft: #fbeceb;
+  --color-ok: #2e7d4f;
+  --color-ok-soft: #e8f3ec;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+
+  --radius-control: 6px;
+  --radius-panel: 10px;
+}
+
+@layer base {
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-paper: #12191d;
+      --color-surface: #182227;
+      --color-ink: #e6ebe8;
+      --color-muted: #9aa7ab;
+      --color-line: #2a363c;
+      --color-rail: #0b2a2b;
+      --color-rail-strong: #071f20;
+      --color-primary: #86c4ba;
+      --color-primary-strong: #a3d6cd;
+      --color-primary-ink: #0a2d2e;
+      --color-danger-soft: #3a1d1b;
+      --color-ok-soft: #173024;
+    }
+  }
+
+  html {
+    font-family: var(--font-sans);
+    font-size: 100%;
+    color: var(--color-ink);
+    background: var(--color-paper);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    font-size: var(--text-base);
+    line-height: 1.5;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :focus-visible {
+      outline-color: var(--color-ipe);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

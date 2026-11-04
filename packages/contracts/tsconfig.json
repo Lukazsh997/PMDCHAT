@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "rootDir": "src",
+    "outDir": "dist",
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -1,0 +1,61 @@
+import { z } from 'zod';
+
+/**
+ * Política de senha padrão. Os limites são repetidos na API (fonte da verdade)
+ * e na interface (para feedback imediato ao usuário).
+ */
+export const PASSWORD_POLICY = {
+  minLength: 10,
+  maxLength: 128,
+} as const;
+
+export const usernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(3, 'O usuário deve ter ao menos 3 caracteres')
+  .max(64, 'O usuário deve ter no máximo 64 caracteres')
+  .regex(/^[a-z0-9._-]+$/, 'Use apenas letras minúsculas, números, ponto, hífen ou sublinhado');
+
+export const passwordSchema = z
+  .string()
+  .min(
+    PASSWORD_POLICY.minLength,
+    `A senha deve ter ao menos ${PASSWORD_POLICY.minLength} caracteres`,
+  )
+  .max(
+    PASSWORD_POLICY.maxLength,
+    `A senha deve ter no máximo ${PASSWORD_POLICY.maxLength} caracteres`,
+  )
+  .refine((v) => /[a-zA-Z]/.test(v) && /\d/.test(v), 'A senha deve conter letras e números');
+
+export const loginRequestSchema = z.object({
+  username: usernameSchema,
+  // No login não aplicamos a política completa: senhas antigas continuam válidas.
+  password: z.string().min(1, 'Informe a senha').max(PASSWORD_POLICY.maxLength),
+});
+export type LoginRequest = z.infer<typeof loginRequestSchema>;
+
+export const changePasswordRequestSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Informe a senha atual'),
+    newPassword: passwordSchema,
+  })
+  .refine((v) => v.currentPassword !== v.newPassword, {
+    message: 'A nova senha deve ser diferente da atual',
+    path: ['newPassword'],
+  });
+export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>;
+
+export const sessionDeviceSchema = z.enum(['web', 'desktop']);
+export type SessionDevice = z.infer<typeof sessionDeviceSchema>;
+
+export interface SessionInfo {
+  id: string;
+  deviceType: SessionDevice;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  lastUsedAt: string;
+  current: boolean;
+}

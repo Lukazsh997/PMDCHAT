@@ -1,0 +1,14 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+onlyBuiltDependencies:
+  - '@swc/core'
+  - esbuild
+
+# Uma única versão do Fastify em todo o monorepo (a mesma usada pelo adaptador do NestJS).
+overrides:
+  fastify: 5.12.7
+
+ignoredBuiltDependencies:
+  - msgpackr-extract
