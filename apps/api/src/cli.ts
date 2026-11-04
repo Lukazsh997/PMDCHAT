@@ -1,10 +1,10 @@
 import 'reflect-metadata';
-import { randomBytes } from 'node:crypto';
 import { loadConfig } from './config/config.js';
 import { createDatabase, runMigrations } from './database/database.js';
 import { AuditService } from './modules/audit/index.js';
 import { PasswordService, SessionService } from './modules/auth/index.js';
 import { createRedis } from './redis/redis.module.js';
+import { roleAssignments } from './database/schema/index.js';
 import { UsersService } from './modules/users/index.js';
 import { passwordSchema, usernameSchema } from '@plataforma/contracts';
 
@@ -15,6 +15,7 @@ Comandos:
   bootstrap-admin          Cria o administrador inicial se o banco não tiver usuários
                            (usa BOOTSTRAP_ADMIN_USERNAME e BOOTSTRAP_ADMIN_PASSWORD)
   reset-password <usuário> Gera uma senha temporária e encerra as sessões do usuário
+  reset-mfa <usuário>      Desativa a verificação em duas etapas (celular perdido)
 `;
 
 async function main(): Promise<void> {
@@ -55,9 +56,9 @@ async function main(): Promise<void> {
           username,
           displayName: 'Administrador',
           passwordHash: await passwords.hash(password),
-          isSuperAdmin: true,
           mustChangePassword: true,
         });
+        await db.insert(roleAssignments).values({ userId: user.id, role: 'super_admin' });
         await audit.record({
           action: 'user.created',
           entityType: 'user',
@@ -73,7 +74,7 @@ async function main(): Promise<void> {
         if (!arg) throw new Error('Informe o usuário: reset-password <usuário>');
         const found = await users.findForLogin(usernameSchema.parse(arg));
         if (!found) throw new Error(`Usuário "${arg}" não encontrado`);
-        const temporary = `${randomBytes(6).toString('base64url')}-${(randomBytes(2).readUInt16BE() % 90) + 10}`;
+        const temporary = passwords.generateTemporary();
         await users.setPassword(found.user.id, await passwords.hash(temporary), true);
         const redis = createRedis(config.REDIS_URL);
         try {
@@ -92,6 +93,22 @@ async function main(): Promise<void> {
         });
         console.log(`Senha temporária de "${found.user.username}": ${temporary}`);
         console.log('O usuário deverá trocá-la no próximo acesso.');
+        break;
+      }
+      case 'reset-mfa': {
+        if (!arg) throw new Error('Informe o usuário: reset-mfa <usuário>');
+        const found = await users.findForLogin(usernameSchema.parse(arg));
+        if (!found) throw new Error(`Usuário "${arg}" não encontrado`);
+        await users.setMfa(found.user.id, null);
+        await audit.record({
+          action: 'auth.mfa_reset',
+          entityType: 'user',
+          entityId: found.user.id,
+          metadata: { via: 'cli' },
+        });
+        console.log(
+          `Verificação em duas etapas de "${found.user.username}" desativada. Ela será pedida de novo no próximo acesso ao painel.`,
+        );
         break;
       }
       default:

@@ -32,7 +32,7 @@ export default tseslint.config(
           patterns: [
             {
               regex:
-                '^\\.\\./(?:\\.\\./)*(?:modules/)?(auth|users|audit|health|org|rbac|conversations|messages|realtime|notifications|files|search|admin|settings)/(?!index\\.js$).+',
+                '^\\.\\./(?:\\.\\./)*(?:modules/)?(auth|users|audit|health|org|rbac|directory|conversations|messages|realtime|notifications|files|search|admin|settings)/(?!index\\.js$).+',
               message: 'Importe outro módulo apenas pelo seu index.ts (ex.: ../users/index.js).',
             },
           ],

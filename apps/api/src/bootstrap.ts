@@ -1,15 +1,17 @@
 import fastifyCookie from '@fastify/cookie';
 import fastifyHelmet from '@fastify/helmet';
+import fastifyMultipart from '@fastify/multipart';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { ConsoleLogger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { API_PREFIX } from '@plataforma/contracts';
+import { API_PREFIX, FILE_RULES } from '@plataforma/contracts';
 import type { Redis } from 'ioredis';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from './app.module.js';
 import { registerOriginCheck } from './common/origin-check.js';
 import { APP_CONFIG, type AppConfig } from './config/config.js';
+import { RealtimeService } from './modules/realtime/index.js';
 import { REDIS } from './redis/redis.module.js';
 
 const LOGIN_ROUTE = `${API_PREFIX}/auth/login`;
@@ -69,7 +71,11 @@ export async function createApp(opts: { logger?: boolean } = {}): Promise<NestFa
         { statusCode: 429 },
       ),
   });
+  await app.register(fastifyMultipart, {
+    limits: { fileSize: FILE_RULES.maxSizeBytes, files: 1, fields: 5 },
+  });
   registerOriginCheck(fastify, config.APP_ORIGINS);
+  app.get(RealtimeService).attach(app.getHttpServer());
 
   app.setGlobalPrefix(API_PREFIX.slice(1));
   app.enableShutdownHooks();

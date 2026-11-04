@@ -25,9 +25,7 @@ export function registerOriginCheck(app: FastifyInstance, allowedOrigins: string
     const origin = req.headers.origin ?? originFromReferer(req.headers.referer);
     const fetchSite = req.headers['sec-fetch-site'];
 
-    const accepted = origin
-      ? allowed.has(origin) || hostOf(origin) === req.headers.host?.toLowerCase()
-      : fetchSite !== 'cross-site';
+    const accepted = isAllowedOrigin(origin, req.headers.host, allowed, fetchSite);
 
     if (!accepted) {
       req.log.warn(
@@ -42,6 +40,17 @@ export function registerOriginCheck(app: FastifyInstance, allowedOrigins: string
       });
     }
   });
+}
+
+/** Mesma regra para HTTP e para o handshake do tempo real (proteção contra CSWSH). */
+export function isAllowedOrigin(
+  origin: string | undefined,
+  host: string | undefined,
+  allowed: Set<string>,
+  fetchSite?: string | string[],
+): boolean {
+  if (!origin) return fetchSite !== 'cross-site';
+  return allowed.has(origin) || hostOf(origin) === host?.toLowerCase();
 }
 
 function originFromReferer(referer: string | undefined): string | undefined {

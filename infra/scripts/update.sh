@@ -7,11 +7,13 @@ cd "$(dirname "$0")/../.."
 echo "1/3 Backup antes da atualização"
 infra/scripts/backup.sh
 
+infra/scripts/upgrade-env.sh
+
 echo "2/3 Construindo imagens"
 docker compose build
 
 echo "3/3 Reiniciando serviços"
-if docker compose up -d --wait --wait-timeout 180; then
+if docker compose up -d --wait --wait-timeout 600; then
   echo "Atualização concluída."
   exit 0
 fi

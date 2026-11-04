@@ -40,6 +40,8 @@ describe('login', () => {
     expect(res.status).toBe(200);
     expect(res.body?.user).toMatchObject({ username: 'maria.silva', displayName: 'Maria Silva' });
     expect(res.body?.user).not.toHaveProperty('passwordHash');
+    expect(res.body?.permissions).toEqual([]);
+    expect(res.body?.mfaSetupRequired).toBe(false);
 
     const cookie = String(res.setCookie);
     expect(cookie).toMatch(/^plataforma_sid=/);

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Backup do banco de dados (formato custom do pg_dump, comprimido).
+# Backup do banco (pg_dump, formato custom) e dos anexos (tar.gz).
 # Agende no cron da VM, ex.: 30 2 * * * /opt/plataforma/infra/scripts/backup.sh
-# Os arquivos anexos (fase 1) entram neste script quando o volume existir.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -10,10 +9,15 @@ KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
 STAMP=$(date +%Y%m%d-%H%M%S)
 mkdir -p "$DEST"
 
-FILE="$DEST/db-$STAMP.dump"
+DB_FILE="$DEST/db-$STAMP.dump"
 # Usuário e banco vêm das variáveis do próprio contêiner do PostgreSQL.
-docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$FILE.partial"
-mv "$FILE.partial" "$FILE"
-echo "Backup do banco: $FILE ($(du -h "$FILE" | cut -f1))"
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$DB_FILE.partial"
+mv "$DB_FILE.partial" "$DB_FILE"
+echo "Banco:   $DB_FILE ($(du -h "$DB_FILE" | cut -f1))"
 
-find "$DEST" -name 'db-*.dump' -mtime +"$KEEP_DAYS" -delete
+FILES_FILE="$DEST/files-$STAMP.tar.gz"
+docker compose exec -T api tar czf - -C /data/files --exclude=./tmp . > "$FILES_FILE.partial"
+mv "$FILES_FILE.partial" "$FILES_FILE"
+echo "Anexos:  $FILES_FILE ($(du -h "$FILES_FILE" | cut -f1))"
+
+find "$DEST" \( -name 'db-*.dump' -o -name 'files-*.tar.gz' \) -mtime +"$KEEP_DAYS" -delete

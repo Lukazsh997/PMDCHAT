@@ -20,6 +20,9 @@ export default defineConfig({
       LOG_LEVEL: 'warn',
       LOGIN_RATE_LIMIT_PER_MINUTE: '30',
       TRUST_PROXY_HOPS: '0',
+      FILES_DIR: '/tmp/plataforma-test-files',
+      CLAMAV_HOST: '',
+      APP_SECRET: 'segredo-de-teste-com-mais-de-32-caracteres',
     },
   },
 });

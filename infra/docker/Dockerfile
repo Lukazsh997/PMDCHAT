@@ -38,7 +38,10 @@ COPY --from=build --chown=node:node /out/api ./
 COPY infra/docker/api-entrypoint.sh /usr/local/bin/api-entrypoint
 # Garante o script executável e com quebras de linha Unix, mesmo que o código tenha
 # passado por um Git ou editor no Windows (CRLF impede a execução no Linux).
-RUN sed -i 's/\r$//' /usr/local/bin/api-entrypoint && chmod 0755 /usr/local/bin/api-entrypoint
+RUN sed -i 's/\r$//' /usr/local/bin/api-entrypoint && chmod 0755 /usr/local/bin/api-entrypoint \
+ && mkdir -p /data/files && chown node:node /data/files
+# O volume de anexos herda o dono desta pasta quando é criado.
+VOLUME /data/files
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \

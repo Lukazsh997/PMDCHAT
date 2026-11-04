@@ -20,6 +20,10 @@ export const API_ERROR_CODES = [
   'RATE_LIMITED',
   'INVALID_ORIGIN',
   'PASSWORD_CHANGE_REQUIRED',
+  'MFA_REQUIRED',
+  'MFA_INVALID',
+  'FILE_REJECTED',
+  'SCAN_UNAVAILABLE',
   'INTERNAL_ERROR',
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

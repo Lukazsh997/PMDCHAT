@@ -47,6 +47,32 @@ export const changePasswordRequestSchema = z
   });
 export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>;
 
+export const mfaCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{6}$/, 'Digite os 6 números do aplicativo autenticador');
+
+export const loginMfaSchema = z.object({
+  challengeId: z.string().min(16).max(128),
+  code: mfaCodeSchema,
+});
+export type LoginMfaRequest = z.infer<typeof loginMfaSchema>;
+
+/** Resposta do login quando a verificação em duas etapas está ativa. */
+export interface LoginMfaChallenge {
+  mfaRequired: true;
+  challengeId: string;
+}
+
+export interface MfaSetupResponse {
+  secret: string;
+  otpauthUrl: string;
+  qrCodeDataUrl: string;
+}
+
+export const enableMfaSchema = z.object({ code: mfaCodeSchema });
+export const disableMfaSchema = z.object({ password: z.string().min(1, 'Informe a senha') });
+
 export const sessionDeviceSchema = z.enum(['web', 'desktop']);
 export type SessionDevice = z.infer<typeof sessionDeviceSchema>;
 
