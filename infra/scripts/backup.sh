@@ -15,9 +15,14 @@ docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES
 mv "$DB_FILE.partial" "$DB_FILE"
 echo "Banco:   $DB_FILE ($(du -h "$DB_FILE" | cut -f1))"
 
-FILES_FILE="$DEST/files-$STAMP.tar.gz"
-docker compose exec -T api tar czf - -C /data/files --exclude=./tmp . > "$FILES_FILE.partial"
-mv "$FILES_FILE.partial" "$FILES_FILE"
-echo "Anexos:  $FILES_FILE ($(du -h "$FILES_FILE" | cut -f1))"
+# Anexos: só existem a partir da Fase 1 (numa atualização vinda da Fase 0, não há o que copiar).
+if docker compose exec -T api test -d /data/files 2>/dev/null; then
+  FILES_FILE="$DEST/files-$STAMP.tar.gz"
+  docker compose exec -T api tar czf - -C /data/files --exclude=./tmp . > "$FILES_FILE.partial"
+  mv "$FILES_FILE.partial" "$FILES_FILE"
+  echo "Anexos:  $FILES_FILE ($(du -h "$FILES_FILE" | cut -f1))"
+else
+  echo "Anexos:  nenhum para copiar (pasta de anexos ainda não existe ou a API está parada)"
+fi
 
 find "$DEST" \( -name 'db-*.dump' -o -name 'files-*.tar.gz' \) -mtime +"$KEEP_DAYS" -delete
