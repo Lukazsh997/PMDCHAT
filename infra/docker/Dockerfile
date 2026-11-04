@@ -35,7 +35,10 @@ ENV NODE_ENV=production
 WORKDIR /app
 RUN apk add --no-cache tini
 COPY --from=build --chown=node:node /out/api ./
-COPY --chown=node:node infra/docker/api-entrypoint.sh /usr/local/bin/api-entrypoint
+COPY infra/docker/api-entrypoint.sh /usr/local/bin/api-entrypoint
+# Garante o script executável e com quebras de linha Unix, mesmo que o código tenha
+# passado por um Git ou editor no Windows (CRLF impede a execução no Linux).
+RUN sed -i 's/\r$//' /usr/local/bin/api-entrypoint && chmod 0755 /usr/local/bin/api-entrypoint
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
@@ -46,6 +49,7 @@ CMD ["api"]
 # ---- imagem web (Nginx) -----------------------------------------------------
 FROM ${NGINX_IMAGE} AS web
 COPY infra/nginx/default.conf /etc/nginx/conf.d/default.conf
+RUN sed -i 's/\r$//' /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 EXPOSE 80
 HEALTHCHECK --interval=15s --timeout=3s --retries=3 \

@@ -69,6 +69,21 @@ acima ficam bloqueados pelo navegador.
 Backups ficam em `./backups` por 14 dias (`BACKUP_DIR` e `BACKUP_KEEP_DAYS` alteram isso).
 Copie-os para outro servidor; um backup na mesma VM não protege contra perda do disco.
 
+## Solução de problemas
+
+**`dependency failed to start: container plataforma-api-1 is unhealthy`**: a API não
+conseguiu iniciar. O `install.sh` mostra as últimas linhas do log; manualmente:
+`docker compose logs --tail 50 api`. Causas comuns:
+
+| Mensagem no log                                                                | Causa e correção                                                                                                                                                                          |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Configuração inválida: APP_ORIGINS…`                                          | Endereço sem `http://` no `.env`. Corrija para `APP_ORIGINS=http://192.168.0.10` e rode `docker compose up -d`                                                                            |
+| `exec api-entrypoint failed: Permission denied` ou `No such file or directory` | Script sem permissão de execução ou com quebras de linha do Windows, numa imagem antiga. Atualize o código e rode `docker compose build --no-cache` (a imagem atual corrige isso sozinha) |
+| `ECONNREFUSED … 5432` ou `password authentication failed`                      | O volume do banco foi criado com outra senha. Se ainda não há dados: `docker compose down -v` e instale de novo                                                                           |
+
+Para editar o projeto no Windows, mantenha as quebras de linha Unix (LF). O arquivo
+`.gitattributes` já faz isso no Git; no editor, use LF para `.sh`, `.env` e `.conf`.
+
 ## Ativar HTTPS depois
 
 Nenhuma mudança de código é necessária:

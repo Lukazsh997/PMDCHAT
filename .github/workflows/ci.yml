@@ -49,18 +49,19 @@ jobs:
     needs: check
     steps:
       - uses: actions/checkout@v5
-      - uses: docker/setup-buildx-action@v3
-      - name: Imagem da API
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: infra/docker/Dockerfile
-          target: api
-          push: false
-      - name: Imagem web
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: infra/docker/Dockerfile
-          target: web
-          push: false
+      - name: Subir a plataforma completa (como na VM)
+        run: |
+          cp .env.example .env
+          sed -i 's|^APP_ORIGINS=.*|APP_ORIGINS=http://localhost|' .env
+          docker compose up -d --build --wait --wait-timeout 240
+      - name: Verificar saúde e login pelo Nginx
+        run: |
+          curl -fsS http://localhost/api/v1/health
+          curl -fsS http://localhost/ | grep -q '<div id="root">'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost/api/v1/auth/login \
+            -H 'content-type: application/json' -H 'origin: http://localhost' \
+            -d '{"username":"admin","password":"TroqueNoPrimeiroAcesso2026"}')
+          test "$code" = 200
+      - name: Logs em caso de falha
+        if: failure()
+        run: docker compose logs --tail 100
