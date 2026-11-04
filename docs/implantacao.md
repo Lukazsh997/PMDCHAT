@@ -35,12 +35,9 @@ gunzip -c plataforma-0.1.0.tar.gz | docker load && docker compose up -d
 
 ## Endereço de acesso e `APP_ORIGINS`
 
-A API recusa alterações vindas de origens não listadas em `APP_ORIGINS` (proteção CSRF). Liste
-todos os endereços que os usuários digitarão no navegador, por exemplo:
-
-```
-APP_ORIGINS=http://chat.orgao.local,http://10.0.0.25
-```
+O sistema aceita login por qualquer endereço que chegue à VM: nome DNS, IP ou outra porta.
+A API só recusa alterações vindas de **outros sites** (proteção CSRF). `APP_ORIGINS` serve
+para registrar o endereço principal e origens extras, como o servidor de desenvolvimento.
 
 ## Política do Chrome para HTTP (obrigatória para notificações)
 
