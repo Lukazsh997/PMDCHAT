@@ -29,7 +29,11 @@ describe('Grants', () => {
     const g = new Grants([{ id: '1', role: 'broadcaster', orgUnitId: 'u', orgUnitPath: '/u/' }]);
     expect(g.hasAny('admin.access')).toBe(false);
     expect(g.requiresMfa).toBe(false);
-    expect(g.permissions).toEqual(['broadcast.send', 'messages.mention_all']);
+    expect(g.permissions).toEqual([
+      'broadcast.send',
+      'messages.mention_all',
+      'conversations.create_channel',
+    ]);
     expect(g.canOn('broadcast.send', '/u/x/')).toBe(true);
     expect(g.canOn('broadcast.send', '/v/')).toBe(false);
   });

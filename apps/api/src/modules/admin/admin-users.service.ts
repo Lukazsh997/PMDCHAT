@@ -13,6 +13,7 @@ import {
 import { and, count, desc, eq, ilike, inArray, isNull, like, or, type SQL, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { AppException } from '../../common/app-exception.js';
+import { DomainEvents } from '../../common/events/domain-events.js';
 import { DB, type Database } from '../../database/database.js';
 import {
   orgUnits,
@@ -58,7 +59,13 @@ export class AdminUsersService {
     private readonly org: OrgService,
     private readonly audit: AuditService,
     private readonly avatars: AvatarService,
+    private readonly events: DomainEvents,
   ) {}
+
+  /** Lotação ou situação mudou: canais de unidade se ajustam. */
+  private changed(userId: string): void {
+    this.events.emit('user.membership_changed', { userId });
+  }
 
   async list(actor: Actor, f: ListFilter): Promise<AdminUserList> {
     const conditions: SQL[] = [isNull(users.deletedAt)];
@@ -142,6 +149,7 @@ export class AdminUsersService {
     } catch (e) {
       throw this.translateUnique(e);
     }
+    this.changed(created.id);
     await this.record(actor, 'user.created', created.id, {
       username: created.username,
       kind: created.kind,
@@ -175,6 +183,7 @@ export class AdminUsersService {
     } catch (e) {
       throw this.translateUnique(e);
     }
+    this.changed(id);
     await this.record(actor, 'user.updated', id, { changes: input });
     return this.get(actor, id);
   }
@@ -197,6 +206,7 @@ export class AdminUsersService {
         .set({ failedAttempts: 0, lockedUntil: null })
         .where(eq(userCredentials.userId, id));
     }
+    this.changed(id);
     await this.record(actor, 'user.status_changed', id, { from: user.status, to: status });
     return this.get(actor, id);
   }
@@ -290,6 +300,7 @@ export class AdminUsersService {
       await tx.delete(userCredentials).where(eq(userCredentials.userId, id));
     });
     await this.sessions.revokeAllForUser(id, 'user_deleted');
+    this.changed(id);
     await this.avatars.remove(id);
     await this.record(actor, 'user.deleted', id, {
       username: user.username,

@@ -50,6 +50,13 @@
       "when": 1793893742107,
       "tag": "0006_fase2_threads_reacoes_mencoes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793894934020,
+      "tag": "0007_fase2_canais",
+      "breakpoints": true
     }
   ]
 }

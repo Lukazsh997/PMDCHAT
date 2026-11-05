@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   addMembersSchema,
+  createChannelSchema,
   type ConversationDetail,
   type ConversationSummary,
   createDirectSchema,
@@ -40,6 +41,7 @@ import { ZodPipe } from '../../common/zod.pipe.js';
 import type { AuthContext } from '../auth/index.js';
 import { PermissionService, requestGrants } from '../rbac/index.js';
 import { ConversationsService } from './conversations.service.js';
+import { ChannelsService } from './channels.service.js';
 import { MessagesService } from './messages.service.js';
 import { SearchService } from './search.service.js';
 
@@ -63,6 +65,7 @@ export class ConversationsController {
     private readonly messages: MessagesService,
     private readonly permissions: PermissionService,
     private readonly search: SearchService,
+    private readonly channels: ChannelsService,
   ) {}
 
   @Get('conversations')
@@ -193,6 +196,15 @@ export class ConversationsController {
     @Body(new ZodPipe(reactionSchema)) b: { emoji: string },
   ): Promise<Message> {
     return this.messages.react(auth, mid, b.emoji, false);
+  }
+
+  @Post('conversations/channel')
+  async createChannel(
+    @CurrentAuth() auth: AuthContext,
+    @Body(new ZodPipe(createChannelSchema)) b: z.output<typeof createChannelSchema>,
+    @Req() req: FastifyRequest,
+  ): Promise<ConversationSummary> {
+    return this.channels.create(auth, await requestGrants(req, this.permissions), b);
   }
 
   @Get('search/messages')

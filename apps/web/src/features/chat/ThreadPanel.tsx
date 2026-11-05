@@ -21,9 +21,11 @@ export function ThreadPanel({
   actions,
   mentionables,
   allowMentionAll,
+  canPost = true,
   send,
   onClose,
 }: {
+  canPost?: boolean;
   rootId: string;
   conversationId: string;
   detail: ConversationDetail | undefined;
@@ -123,7 +125,7 @@ export function ThreadPanel({
         )}
         <div ref={end} />
       </div>
-      {root && !root.deletedAt && (
+      {root && !root.deletedAt && canPost && (
         <Composer
           conversationId={conversationId}
           draftKey={`thread:${rootId}`}

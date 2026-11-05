@@ -1,4 +1,4 @@
-import { ArrowLeft, Info, Upload } from 'lucide-react';
+import { ArrowLeft, Info, Megaphone, Upload } from 'lucide-react';
 import { MESSAGE_RULES } from '@plataforma/contracts';
 import { serverNow } from '@/lib/server-clock';
 import { useEffect, useRef, useState } from 'react';
@@ -96,6 +96,10 @@ export function ConversationView({ conversationId }: { conversationId: string })
     if (lastSeq && document.visibilityState === 'visible') markRead(qc, conversationId, lastSeq);
   }, [qc, conversationId, lastSeq]);
 
+  const channel = d?.channel ?? summary?.channel ?? null;
+  const myRole = d?.myRole ?? summary?.myRole;
+  // Canal de avisos: só administradores do canal publicam (e respondem em thread).
+  const canPost = !channel || (myRole !== undefined && myRole !== 'member');
   const mentionables: Mentionable[] = (d?.members ?? [])
     .filter((m) => m.id !== meId && !m.removed)
     .map((m) => ({ id: m.id, displayName: m.displayName, avatarUrl: m.avatarUrl }));
@@ -135,9 +139,13 @@ export function ConversationView({ conversationId }: { conversationId: string })
       ? 'Conta excluída'
       : peer
         ? PRESENCE_TEXT[presence ?? 'offline']
-        : d
-          ? d.members.map((m) => (m.id === meId ? 'Você' : m.displayName.split(' ')[0])).join(', ')
-          : '';
+        : channel
+          ? `Canal de avisos · ${d?.memberCount ?? summary?.memberCount ?? 0} pessoas`
+          : d
+            ? d.members
+                .map((m) => (m.id === meId ? 'Você' : m.displayName.split(' ')[0]))
+                .join(', ')
+            : '';
 
   if (detail.isError) {
     return (
@@ -191,6 +199,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
               size={38}
               src={peer?.avatarUrl}
               group={d?.type === 'group'}
+              channel={!!channel}
               presence={peer ? (presence ?? 'offline') : undefined}
             />
             <span className="min-w-0">
@@ -224,6 +233,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
             loadNewer={messages.loadNewer}
             onJumpLatest={() => void messages.jumpToLatest()}
             focusId={threadId ? null : focusId}
+            canReply={canPost}
             onFocused={clearFocus}
             detail={d}
             meId={meId}
@@ -231,7 +241,12 @@ export function ConversationView({ conversationId }: { conversationId: string })
           />
         )}
 
-        {peer?.removed ? (
+        {!canPost ? (
+          <p className="flex items-center justify-center gap-2 border-t border-line bg-surface px-4 py-3 text-center text-sm text-muted">
+            <Megaphone size={16} aria-hidden="true" /> Canal de avisos: só os administradores
+            publicam aqui. Você pode reagir às mensagens.
+          </p>
+        ) : peer?.removed ? (
           <p className="border-t border-line bg-surface px-4 py-3 text-center text-sm text-muted">
             Esta pessoa foi excluída do sistema. O histórico continua disponível para consulta.
           </p>
@@ -293,6 +308,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
             actions={actions}
             mentionables={mentionables}
             allowMentionAll={allowMentionAll}
+            canPost={canPost}
             send={send}
             onClose={() => openThread(null)}
           />

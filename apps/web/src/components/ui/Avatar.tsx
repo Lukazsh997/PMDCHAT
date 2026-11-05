@@ -1,5 +1,5 @@
 import type { PresenceStatus } from '@plataforma/contracts';
-import { Users } from 'lucide-react';
+import { Megaphone, Users } from 'lucide-react';
 import { useState } from 'react';
 import { initials } from '@/lib/format';
 
@@ -18,18 +18,21 @@ export function Avatar({
   size = 32,
   presence,
   group = false,
+  channel = false,
   src,
 }: {
   name: string;
   size?: number;
   presence?: PresenceStatus;
   group?: boolean;
+  /** Canal de avisos: ícone de megafone. */
+  channel?: boolean;
   src?: string | null;
 }) {
   const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
   const dot = Math.max(8, Math.round(size * 0.28));
   const [failed, setFailed] = useState<string | null>(null);
-  const showPhoto = !!src && !group && failed !== src;
+  const showPhoto = !!src && !group && !channel && failed !== src;
   return (
     <span className="relative inline-flex shrink-0" style={{ width: size, height: size }}>
       {showPhoto ? (
@@ -53,7 +56,13 @@ export function Avatar({
           }}
           className="inline-flex h-full w-full items-center justify-center rounded-full font-bold"
         >
-          {group ? <Users size={Math.round(size * 0.48)} /> : initials(name)}
+          {channel ? (
+            <Megaphone size={Math.round(size * 0.46)} />
+          ) : group ? (
+            <Users size={Math.round(size * 0.48)} />
+          ) : (
+            initials(name)
+          )}
         </span>
       )}
       {presence && (

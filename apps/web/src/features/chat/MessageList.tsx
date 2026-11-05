@@ -43,7 +43,10 @@ export function MessageList({
   detail,
   meId,
   actions,
+  canReply = true,
 }: {
+  /** Pode responder em thread (num canal, só quem publica). */
+  canReply?: boolean;
   items: ChatMessage[];
   hasMore: boolean;
   /** Aberta no meio da conversa: há mensagens mais novas a carregar. */
@@ -120,6 +123,7 @@ export function MessageList({
     });
     ro.observe(content.current);
     return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só na montagem: começa no fim, salvo se veio procurar uma mensagem
   }, []);
 
   async function onScroll() {
@@ -195,6 +199,7 @@ export function MessageList({
                     actions={actions}
                     now={now}
                     people={people}
+                    canReply={canReply}
                     highlight={highlight === m.id}
                   />
                 )}
@@ -242,7 +247,9 @@ export function Bubble({
   people,
   inThread = false,
   highlight = false,
+  canReply = true,
 }: {
+  canReply?: boolean;
   now: number;
   m: ChatMessage;
   mine: boolean;
@@ -264,7 +271,7 @@ export function Bubble({
   const editable = own && age < MESSAGE_RULES.editWindowMinutes * 60_000;
   const canDelete = own && age < MESSAGE_RULES.deleteWindowMinutes * 60_000;
   const interactive = !deleted && !m.status && m.type === 'text';
-  const canThread = interactive && !inThread && !m.threadRootId;
+  const canThread = interactive && canReply && !inThread && !m.threadRootId;
   const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
   const menu = [
     ...(editable

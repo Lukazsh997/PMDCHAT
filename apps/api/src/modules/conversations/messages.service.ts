@@ -30,6 +30,7 @@ import { AuditService } from '../audit/index.js';
 import type { AuthContext } from '../auth/index.js';
 import { toUploaded } from '../files/index.js';
 import type { Grants } from '../rbac/index.js';
+import { ChannelsService } from './channels.service.js';
 import { ConversationsService } from './conversations.service.js';
 import { toMessage } from './message-mapper.js';
 
@@ -124,7 +125,11 @@ export class MessagesService {
     },
     grants: Grants,
   ): Promise<Message> {
-    const { member } = await this.conversations.requireMember(auth.user.id, conversationId);
+    const { member, conversation } = await this.conversations.requireMember(
+      auth.user.id,
+      conversationId,
+    );
+    ChannelsService.assertCanPost(conversation, member.role);
     const existing = await this.findByClientId(conversationId, auth.user.id, input.clientId);
     if (existing) return existing;
 

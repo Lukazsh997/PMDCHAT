@@ -14,6 +14,7 @@ export const PERMISSIONS = {
   'audit.read': 'Consultar o registro de auditoria',
   'broadcast.send': 'Enviar comunicados em massa para unidades',
   'messages.mention_all': 'Usar @todos em grupos grandes',
+  'conversations.create_channel': 'Criar canais de aviso',
   'users.delete': 'Excluir usuários definitivamente do diretório',
 } as const;
 
@@ -29,7 +30,13 @@ export const ROLES = {
   unit_admin: {
     name: 'Administrador de unidade',
     description: 'Gerencia os usuários da unidade e das unidades abaixo dela',
-    permissions: ['admin.access', 'users.read', 'users.manage', 'broadcast.send'] as Permission[],
+    permissions: [
+      'admin.access',
+      'users.read',
+      'users.manage',
+      'broadcast.send',
+      'conversations.create_channel',
+    ] as Permission[],
     scoped: true,
   },
   auditor: {
@@ -40,8 +47,13 @@ export const ROLES = {
   },
   broadcaster: {
     name: 'Comunicador',
-    description: 'Envia comunicados em massa para a unidade e as unidades abaixo dela',
-    permissions: ['broadcast.send', 'messages.mention_all'] as Permission[],
+    description:
+      'Envia comunicados e cria canais de aviso para a unidade e as unidades abaixo dela',
+    permissions: [
+      'broadcast.send',
+      'messages.mention_all',
+      'conversations.create_channel',
+    ] as Permission[],
     scoped: true,
   },
 } as const satisfies Record<

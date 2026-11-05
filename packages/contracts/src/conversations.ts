@@ -33,6 +33,15 @@ export type MemberRole = 'owner' | 'admin' | 'member';
 export interface ConversationMember extends DirectoryUser {
   role: MemberRole;
   lastReadSeq: number;
+  /** Canal de unidade: entrou pela lotação (sai sozinho se mudar de unidade). */
+  autoJoined: boolean;
+}
+
+/** Canal de avisos: só administradores publicam. */
+export interface ChannelInfo {
+  /** Unidade cujas pessoas são membros automáticos. */
+  orgUnit: { id: string; name: string; acronym: string | null } | null;
+  includeSubunits: boolean;
 }
 
 export interface MessagePreview {
@@ -53,6 +62,8 @@ export interface ConversationSummary {
   description: string | null;
   /** Conversa direta: a outra pessoa. */
   peer: DirectoryUser | null;
+  /** Preenchido quando o grupo é um canal de avisos. */
+  channel: ChannelInfo | null;
   memberCount: number;
   myRole: MemberRole;
   lastSeq: number;
@@ -73,6 +84,7 @@ export type MessageType = 'text' | 'system';
 
 export type SystemEvent =
   | { event: 'group_created'; actorId: string }
+  | { event: 'channel_created'; actorId: string }
   | { event: 'members_added'; actorId: string; userIds: string[]; names: string[] }
   | { event: 'member_removed'; actorId: string; userId: string; name: string }
   | { event: 'member_left'; actorId: string }
@@ -163,6 +175,34 @@ export const createGroupSchema = z.object({
   memberIds: z.array(z.uuid()).max(MESSAGE_RULES.maxGroupMembers),
 });
 export type CreateGroupRequest = z.input<typeof createGroupSchema>;
+
+export const createChannelSchema = z
+  .object({
+    name: z.string().trim().min(2, 'Informe o nome do canal').max(120),
+    description: z
+      .string()
+      .trim()
+      .max(500)
+      .transform((v) => v || null)
+      .nullable()
+      .optional(),
+    /** Unidade cujas pessoas entram automaticamente. */
+    orgUnitId: z.uuid().nullable().default(null),
+    includeSubunits: z.boolean().default(true),
+    /** Pessoas escolhidas uma a uma (além das da unidade). */
+    memberIds: z.array(z.uuid()).max(MESSAGE_RULES.maxGroupMembers).default([]),
+  })
+  .refine((v) => v.orgUnitId || v.memberIds.length, {
+    message: 'Escolha uma unidade ou ao menos uma pessoa',
+    path: ['memberIds'],
+  });
+export type CreateChannelRequest = z.input<typeof createChannelSchema>;
+
+/** Onde a pessoa tem uma permissão (para oferecer só as unidades possíveis). */
+export interface PermissionScopes {
+  global: boolean;
+  unitIds: string[];
+}
 
 export const updateConversationSchema = createGroupSchema
   .pick({ name: true, description: true })

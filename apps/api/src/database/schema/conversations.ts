@@ -35,6 +35,11 @@ export const conversations = pgTable(
     /** Conversa direta: os dois ids em ordem, garante uma única conversa por par. */
     directKey: varchar({ length: 80 }),
     createdBy: uuid().references(() => users.id, { onDelete: 'set null' }),
+    /** Canal de avisos: só os administradores do canal publicam. */
+    isChannel: boolean().notNull().default(false),
+    /** Canal ligado a uma unidade: as pessoas lotadas entram e saem sozinhas. */
+    orgUnitId: uuid().references((): AnyPgColumn => orgUnits.id, { onDelete: 'set null' }),
+    includeSubunits: boolean().notNull().default(true),
     /** Último número de sequência usado; incrementado a cada mensagem. */
     lastSeq: bigint({ mode: 'number' }).notNull().default(0),
     lastMessageAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -63,6 +68,8 @@ export const conversationMembers = pgTable(
     joinedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     /** Primeira mensagem visível ao membro (quem entra depois não vê o histórico anterior). */
     joinedSeq: bigint({ mode: 'number' }).notNull().default(0),
+    /** Entrou pela lotação (canal de unidade): a sincronização põe e tira. */
+    autoJoined: boolean().notNull().default(false),
   },
   (t) => [
     primaryKey({ columns: [t.conversationId, t.userId] }),

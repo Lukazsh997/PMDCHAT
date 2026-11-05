@@ -38,6 +38,11 @@ interface SummaryRow extends Record<string, unknown> {
   member_count: string;
   unread_count: string;
   unread_mentions: string;
+  is_channel: boolean;
+  include_subunits: boolean;
+  ou_id: string | null;
+  ou_name: string | null;
+  ou_acronym: string | null;
   peer_id: string | null;
   lm_id: string | null;
   lm_seq: string | null;
@@ -71,6 +76,7 @@ export class ConversationsService {
       : sql``;
     const rows = (await this.db.execute(sql`
       select c.id, c.type, c.name, c.description, c.last_seq, c.last_message_at,
+             c.is_channel, c.include_subunits, ou.id as ou_id, ou.name as ou_name, ou.acronym as ou_acronym,
              m.role, m.last_read_seq, m.muted_until,
              (select count(*) from conversation_members x where x.conversation_id = c.id) as member_count,
              (select count(*) from messages x
@@ -92,6 +98,7 @@ export class ConversationsService {
                 join files f on f.id = a.file_id where a.message_id = lm.id) as lm_attachments
         from conversation_members m
         join conversations c on c.id = m.conversation_id
+        left join org_units ou on ou.id = c.org_unit_id
         left join lateral (
           select * from messages x where x.conversation_id = c.id and x.seq > m.joined_seq
             and x.thread_root_id is null
@@ -134,6 +141,12 @@ export class ConversationsService {
         title: r.type === 'group' ? (r.name ?? 'Grupo') : (peer?.displayName ?? 'Conversa'),
         description: r.description,
         peer,
+        channel: r.is_channel
+          ? {
+              orgUnit: r.ou_id ? { id: r.ou_id, name: r.ou_name!, acronym: r.ou_acronym } : null,
+              includeSubunits: r.include_subunits,
+            }
+          : null,
         memberCount: Number(r.member_count),
         myRole: r.role,
         lastSeq: Number(r.last_seq),
@@ -167,7 +180,12 @@ export class ConversationsService {
     const order: Record<MemberRole, number> = { owner: 0, admin: 1, member: 2 };
     const members: ConversationMember[] = rows
       .filter((r) => people.has(r.userId))
-      .map((r) => ({ ...people.get(r.userId)!, role: r.role, lastReadSeq: r.lastReadSeq }))
+      .map((r) => ({
+        ...people.get(r.userId)!,
+        role: r.role,
+        lastReadSeq: r.lastReadSeq,
+        autoJoined: r.autoJoined,
+      }))
       .sort(
         (a, b) =>
           order[a.role] - order[b.role] || a.displayName.localeCompare(b.displayName, 'pt-BR'),
@@ -299,16 +317,17 @@ export class ConversationsService {
 
     const sys = await this.db.transaction(async (tx) => {
       const [conv] = await tx
-        .select({ lastSeq: conversations.lastSeq })
+        .select({ lastSeq: conversations.lastSeq, isChannel: conversations.isChannel })
         .from(conversations)
         .where(eq(conversations.id, id))
         .for('update');
-      // Quem entra agora vê a partir daqui, não o histórico anterior.
+      // Quem entra num grupo vê a partir daqui; num canal, os avisos anteriores também.
+      const from = conv!.isChannel ? 0 : conv!.lastSeq;
       await tx.insert(conversationMembers).values(
         toAdd.map((userId) => ({
           conversationId: id,
           userId,
-          joinedSeq: conv!.lastSeq,
+          joinedSeq: from,
           lastReadSeq: conv!.lastSeq,
         })),
       );
@@ -345,6 +364,15 @@ export class ConversationsService {
         and(eq(conversationMembers.conversationId, id), eq(conversationMembers.userId, userId)),
       );
     if (!target) throw new AppException(404, 'NOT_FOUND', 'Esta pessoa não está no grupo.');
+    if (target.autoJoined) {
+      throw new AppException(
+        409,
+        'CONFLICT',
+        leaving
+          ? 'Você está neste canal pela sua lotação. Se preferir, silencie o canal.'
+          : 'Esta pessoa está no canal pela lotação: ela sai sozinha se mudar de unidade.',
+      );
+    }
     if (!leaving) {
       if (me.member.role === 'member')
         throw forbidden('Somente administradores do grupo podem remover pessoas.');
@@ -525,6 +553,7 @@ export class ConversationsService {
           : (peer?.displayName ?? 'Conversa'),
       description: conversation.description,
       peer,
+      channel: null,
       memberCount: others.length + 1,
       myRole: member.role,
       lastSeq: conversation.lastSeq,
