@@ -13,6 +13,7 @@ export const PERMISSIONS = {
   'roles.assign': 'Atribuir e remover papéis',
   'audit.read': 'Consultar o registro de auditoria',
   'broadcast.send': 'Enviar comunicados em massa para unidades',
+  'messages.mention_all': 'Usar @todos em grupos grandes',
   'users.delete': 'Excluir usuários definitivamente do diretório',
 } as const;
 
@@ -40,7 +41,7 @@ export const ROLES = {
   broadcaster: {
     name: 'Comunicador',
     description: 'Envia comunicados em massa para a unidade e as unidades abaixo dela',
-    permissions: ['broadcast.send'] as Permission[],
+    permissions: ['broadcast.send', 'messages.mention_all'] as Permission[],
     scoped: true,
   },
 } as const satisfies Record<

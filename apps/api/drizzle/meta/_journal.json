@@ -43,6 +43,13 @@
       "when": 1793888424403,
       "tag": "0005_fase1_sem_moderador",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793893742107,
+      "tag": "0006_fase2_threads_reacoes_mencoes",
+      "breakpoints": true
     }
   ]
 }

@@ -4,8 +4,10 @@ import type {
   ConversationSummary,
   DirectoryUser,
   Message,
+  MentionPage,
   MessagePage,
   MessagePreview,
+  ThreadPage,
 } from '@plataforma/contracts';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
@@ -18,7 +20,21 @@ export const keys = {
   detail: (id: string) => ['conversation', id] as const,
   messages: (id: string) => ['messages', id] as const,
   directory: (q: string) => ['directory', q] as const,
+  thread: (rootId: string) => ['thread', rootId] as const,
+  mentions: ['mentions'] as const,
 };
+
+export interface ThreadState {
+  root: ChatMessage;
+  replies: ChatMessage[];
+}
+
+/** Opções de envio além do texto e dos anexos. */
+export interface SendExtras {
+  threadRootId?: string;
+  mentions?: string[];
+  mentionAll?: boolean;
+}
 
 /** Mensagem na tela: pode ainda estar sendo enviada ou ter falhado. */
 export interface ChatMessage extends Message {
@@ -120,11 +136,84 @@ export function merge(a: ChatMessage[], b: ChatMessage[]): ChatMessage[] {
   );
 }
 
+/**
+ * Coloca a mensagem onde ela aparece: respostas de thread vão para o painel da thread;
+ * as demais para a linha do tempo (e, se abriram uma thread, atualizam a raiz dela).
+ */
 export function upsertMessage(qc: QueryClient, m: ChatMessage): void {
+  if (m.threadRootId) {
+    qc.setQueryData<ThreadState>(
+      keys.thread(m.threadRootId),
+      (t) => t && { ...t, replies: merge(t.replies, [m]) },
+    );
+    return;
+  }
   qc.setQueryData<MessagesState>(
     keys.messages(m.conversationId),
     (s) => s && { ...s, items: merge(s.items, [m]) },
   );
+  if (!m.status) {
+    qc.setQueryData<ThreadState>(keys.thread(m.id), (t) => t && { ...t, root: m });
+  }
+}
+
+/** Retira uma mensagem otimista (antes de colocar a versão do servidor ou ao reenviar). */
+export function dropLocal(qc: QueryClient, m: ChatMessage): void {
+  if (m.threadRootId) {
+    qc.setQueryData<ThreadState>(
+      keys.thread(m.threadRootId),
+      (t) => t && { ...t, replies: t.replies.filter((x) => x.id !== m.id) },
+    );
+  } else {
+    qc.setQueryData<MessagesState>(
+      keys.messages(m.conversationId),
+      (s) => s && { ...s, items: s.items.filter((x) => x.id !== m.id) },
+    );
+  }
+}
+
+export function useThread(rootId: string | null) {
+  return useQuery({
+    queryKey: keys.thread(rootId ?? ''),
+    queryFn: () => api<ThreadPage>('GET', `/messages/${rootId}/thread`),
+    enabled: !!rootId,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useMentions() {
+  return useQuery({
+    queryKey: keys.mentions,
+    queryFn: () => api<MentionPage>('GET', '/mentions?limit=50'),
+    staleTime: 15_000,
+  });
+}
+
+/** Liga ou desliga a minha reação; a tela muda na hora e o servidor confirma. */
+export function useReact(meId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { message: ChatMessage; emoji: string; on: boolean }) =>
+      api<Message>(v.on ? 'PUT' : 'DELETE', `/messages/${v.message.id}/reactions`, {
+        emoji: v.emoji,
+      }),
+    onMutate: ({ message, emoji, on }) => {
+      const reactions = message.reactions
+        .map((r) =>
+          r.emoji === emoji
+            ? { ...r, userIds: on ? [...r.userIds, meId] : r.userIds.filter((u) => u !== meId) }
+            : r,
+        )
+        .filter((r) => r.userIds.length);
+      if (on && !reactions.some((r) => r.emoji === emoji))
+        reactions.push({ emoji, userIds: [meId] });
+      upsertMessage(qc, { ...message, reactions });
+      return { message };
+    },
+    onError: (_e, _v, c) => c && upsertMessage(qc, c.message),
+    onSuccess: (m) => upsertMessage(qc, m),
+  });
 }
 
 /** Atualiza a lista de conversas quando chega uma mensagem (sem nova consulta ao servidor). */
@@ -142,6 +231,18 @@ export function applyToList(
     found = true;
     const c = list[idx]!;
     const mine = m.senderId === meId;
+    const mentionsMe =
+      !mine &&
+      m.type === 'text' &&
+      (m.mentionsAll || m.mentions.includes(meId)) &&
+      activeConversation.get() !== c.id;
+    // Resposta de thread não muda a última mensagem nem as não lidas da conversa.
+    if (m.threadRootId) {
+      if (!mentionsMe) return list;
+      const bumped = list.slice();
+      bumped[idx] = { ...c, unreadMentions: c.unreadMentions + 1 };
+      return bumped;
+    }
     const counts = m.type === 'text' && !mine && activeConversation.get() !== c.id;
     const updated: ConversationSummary = {
       ...c,
@@ -149,6 +250,7 @@ export function applyToList(
       lastMessage: preview,
       lastMessageAt: m.createdAt,
       unreadCount: counts ? c.unreadCount + 1 : mine ? 0 : c.unreadCount,
+      unreadMentions: mentionsMe ? c.unreadMentions + 1 : mine ? 0 : c.unreadMentions,
       lastReadSeq: mine ? m.seq : c.lastReadSeq,
     };
     return [updated, ...list.slice(0, idx), ...list.slice(idx + 1)];
@@ -174,7 +276,12 @@ export function previewOf(m: Message, senderName: string | null): MessagePreview
 export function useSendMessage(conversationId: string, meId: string) {
   const qc = useQueryClient();
   return useCallback(
-    async (body: string, attachments: Attachment[] = [], clientId = newClientId()) => {
+    async (
+      body: string,
+      attachments: Attachment[] = [],
+      extras: SendExtras = {},
+      clientId = newClientId(),
+    ) => {
       const optimistic: ChatMessage = {
         id: `local-${clientId}`,
         conversationId,
@@ -189,6 +296,12 @@ export function useSendMessage(conversationId: string, meId: string) {
         editedAt: null,
         deletedAt: null,
         broadcast: null,
+        threadRootId: extras.threadRootId ?? null,
+        replyCount: 0,
+        lastReplyAt: null,
+        reactions: [],
+        mentions: extras.mentions ?? [],
+        mentionsAll: !!extras.mentionAll,
         status: 'sending',
         pendingAttachmentIds: attachments.map((a) => a.id),
       };
@@ -198,30 +311,16 @@ export function useSendMessage(conversationId: string, meId: string) {
           clientId,
           body,
           attachmentIds: attachments.map((a) => a.id),
+          threadRootId: extras.threadRootId,
+          mentions: extras.mentions ?? [],
+          mentionAll: !!extras.mentionAll,
         });
-        qc.setQueryData<MessagesState>(
-          keys.messages(conversationId),
-          (s) =>
-            s && {
-              ...s,
-              items: merge(
-                s.items.filter((x) => x.id !== optimistic.id),
-                [saved],
-              ),
-            },
-        );
+        dropLocal(qc, optimistic);
+        upsertMessage(qc, saved);
         applyToList(qc, saved, meId, previewOf(saved, null));
       } catch {
-        qc.setQueryData<MessagesState>(
-          keys.messages(conversationId),
-          (s) =>
-            s && {
-              ...s,
-              items: s.items.map((x) =>
-                x.id === optimistic.id ? { ...x, status: 'failed' as const } : x,
-              ),
-            },
-        );
+        dropLocal(qc, optimistic);
+        upsertMessage(qc, { ...optimistic, status: 'failed' });
       }
     },
     [qc, conversationId, meId],
@@ -231,8 +330,12 @@ export function useSendMessage(conversationId: string, meId: string) {
 export function useEditMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; body: string }) =>
-      api<Message>('PATCH', `/messages/${v.id}`, { body: v.body }),
+    mutationFn: (v: { id: string; body: string; mentions?: string[]; mentionAll?: boolean }) =>
+      api<Message>('PATCH', `/messages/${v.id}`, {
+        body: v.body,
+        mentions: v.mentions ?? [],
+        mentionAll: !!v.mentionAll,
+      }),
     onSuccess: (m) => upsertMessage(qc, m),
   });
 }
@@ -250,11 +353,11 @@ const readTimers = new Map<string, number>();
 export function markRead(qc: QueryClient, conversationId: string, seq: number): void {
   const list = qc.getQueryData<ConversationSummary[]>(keys.list);
   const c = list?.find((x) => x.id === conversationId);
-  if (c && c.lastReadSeq >= seq && c.unreadCount === 0) return;
+  if (c && c.lastReadSeq >= seq && c.unreadCount === 0 && c.unreadMentions === 0) return;
   qc.setQueryData<ConversationSummary[]>(keys.list, (l) =>
     l?.map((x) =>
       x.id === conversationId
-        ? { ...x, unreadCount: 0, lastReadSeq: Math.max(x.lastReadSeq, seq) }
+        ? { ...x, unreadCount: 0, unreadMentions: 0, lastReadSeq: Math.max(x.lastReadSeq, seq) }
         : x,
     ),
   );

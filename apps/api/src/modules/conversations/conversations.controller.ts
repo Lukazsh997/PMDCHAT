@@ -9,6 +9,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
 } from '@nestjs/common';
 import {
   addMembersSchema,
@@ -19,16 +20,21 @@ import {
   editMessageSchema,
   markReadSchema,
   type Message,
+  type MentionPage,
   type MessagePage,
+  reactionSchema,
   sendMessageSchema,
+  type ThreadPage,
   setMemberRoleSchema,
   updateConversationSchema,
   updateMySettingsSchema,
 } from '@plataforma/contracts';
+import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { CurrentAuth } from '../../common/request-context.js';
 import { ZodPipe } from '../../common/zod.pipe.js';
 import type { AuthContext } from '../auth/index.js';
+import { PermissionService, requestGrants } from '../rbac/index.js';
 import { ConversationsService } from './conversations.service.js';
 import { MessagesService } from './messages.service.js';
 
@@ -39,11 +45,17 @@ const pageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+const mentionsQuery = z.object({
+  before: z.iso.datetime({ offset: true }).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(30),
+});
+
 @Controller()
 export class ConversationsController {
   constructor(
     private readonly conversations: ConversationsService,
     private readonly messages: MessagesService,
+    private readonly permissions: PermissionService,
   ) {}
 
   @Get('conversations')
@@ -144,21 +156,54 @@ export class ConversationsController {
   }
 
   @Post('conversations/:id/messages')
-  send(
+  async send(
     @CurrentAuth() auth: AuthContext,
     @Param('id', id) cid: string,
     @Body(new ZodPipe(sendMessageSchema)) b: z.output<typeof sendMessageSchema>,
+    @Req() req: FastifyRequest,
   ): Promise<Message> {
-    return this.messages.send(auth, cid, b);
+    return this.messages.send(auth, cid, b, await requestGrants(req, this.permissions));
+  }
+
+  @Get('messages/:id/thread')
+  thread(@CurrentAuth() auth: AuthContext, @Param('id', id) mid: string): Promise<ThreadPage> {
+    return this.messages.thread(auth.user.id, mid);
+  }
+
+  @Put('messages/:id/reactions')
+  react(
+    @CurrentAuth() auth: AuthContext,
+    @Param('id', id) mid: string,
+    @Body(new ZodPipe(reactionSchema)) b: { emoji: string },
+  ): Promise<Message> {
+    return this.messages.react(auth, mid, b.emoji, true);
+  }
+
+  @Delete('messages/:id/reactions')
+  unreact(
+    @CurrentAuth() auth: AuthContext,
+    @Param('id', id) mid: string,
+    @Body(new ZodPipe(reactionSchema)) b: { emoji: string },
+  ): Promise<Message> {
+    return this.messages.react(auth, mid, b.emoji, false);
+  }
+
+  @Get('mentions')
+  mentions(
+    @CurrentAuth() auth: AuthContext,
+    @Query(new ZodPipe(mentionsQuery)) q: z.infer<typeof mentionsQuery>,
+  ): Promise<MentionPage> {
+    return this.messages.mentions(auth.user.id, q);
   }
 
   @Patch('messages/:id')
-  edit(
+  async edit(
     @CurrentAuth() auth: AuthContext,
     @Param('id', id) mid: string,
-    @Body(new ZodPipe(editMessageSchema)) b: { body: string },
+    @Body(new ZodPipe(editMessageSchema)) b: z.output<typeof editMessageSchema>,
+    @Req() req: FastifyRequest,
   ): Promise<Message> {
-    return this.messages.edit(auth, mid, b.body);
+    return this.messages.edit(auth, mid, b, await requestGrants(req, this.permissions));
   }
 
   @Delete('messages/:id')

@@ -92,12 +92,24 @@ export const messages = pgTable(
     purgedAt: timestamp({ withTimezone: true }),
     /** Mensagem entregue por um comunicado em massa. */
     broadcastId: uuid().references((): AnyPgColumn => broadcasts.id, { onDelete: 'set null' }),
+    /** Resposta numa thread: aponta para a mensagem que abriu a thread. */
+    threadRootId: uuid().references((): AnyPgColumn => messages.id, { onDelete: 'set null' }),
+    /** Na mensagem que abriu a thread: quantas respostas e quando foi a última. */
+    replyCount: integer().notNull().default(0),
+    lastReplyAt: timestamp({ withTimezone: true }),
+    /** @todos: menciona todos os membros da conversa. */
+    mentionsAll: boolean().notNull().default(false),
+    // body_tsv (tsvector gerado, configuração pt_unaccent) existe só no banco: ver a
+    // migração 0006. As consultas de busca usam SQL direto.
   },
   (t) => [
     uniqueIndex('messages_conversation_seq_uq').on(t.conversationId, t.seq),
     uniqueIndex('messages_client_id_uq')
       .on(t.conversationId, t.senderId, t.clientId)
       .where(sql`${t.clientId} is not null`),
+    index('messages_thread_idx')
+      .on(t.threadRootId, t.seq)
+      .where(sql`${t.threadRootId} is not null`),
     index('messages_pending_purge_idx')
       .on(t.deletedAt)
       .where(sql`${t.deletedAt} is not null and ${t.purgedAt} is null`),
@@ -127,6 +139,39 @@ export const broadcasts = pgTable(
   (t) => [
     uniqueIndex('broadcasts_client_id_uq').on(t.senderId, t.clientId),
     index('broadcasts_unit_idx').on(t.orgUnitId),
+  ],
+);
+
+/** Reações: uma linha por pessoa e emoji. */
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    messageId: uuid()
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    emoji: varchar({ length: 16 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.userId, t.emoji] })],
+);
+
+/** Menções a pessoas (o @todos fica em `messages.mentions_all`). Alimenta a aba Menções. */
+export const messageMentions = pgTable(
+  'message_mentions',
+  {
+    messageId: uuid()
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.messageId, t.userId] }),
+    index('message_mentions_user_idx').on(t.userId),
   ],
 );
 

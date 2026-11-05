@@ -1,4 +1,4 @@
-import { LogOut, MessagesSquare, Network, Shield, UserRound, WifiOff } from 'lucide-react';
+import { AtSign, LogOut, MessagesSquare, Network, Shield, UserRound, WifiOff } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { Avatar, ErrorBoundary } from '@/components/ui';
@@ -18,7 +18,9 @@ export function AppShell() {
   const logout = useLogout();
   const user = me.data?.user;
   useRealtimeSync(user?.id);
-  const unread = (useConversations().data ?? []).reduce((n, c) => n + c.unreadCount, 0);
+  const conversations = useConversations().data ?? [];
+  const unread = conversations.reduce((n, c) => n + c.unreadCount, 0);
+  const unreadMentions = conversations.reduce((n, c) => n + c.unreadMentions, 0);
   const connection = connectionStore.use((s) => s);
   const isAdmin = me.data?.permissions.includes('admin.access');
 
@@ -40,6 +42,9 @@ export function AppShell() {
           <span className="sr-only">{APP_NAME}</span>
           <RailLink to="/" label="Conversas" badge={unread}>
             <MessagesSquare size={20} aria-hidden="true" />
+          </RailLink>
+          <RailLink to="/mencoes" label="Menções" badge={unreadMentions}>
+            <AtSign size={20} aria-hidden="true" />
           </RailLink>
           {user?.kind !== 'guest' && (
             <RailLink to="/organograma" label="Organograma">

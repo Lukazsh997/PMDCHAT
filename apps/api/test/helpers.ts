@@ -37,6 +37,7 @@ export async function resetState(ctx: TestContext): Promise<void> {
   await ctx.db.execute(sql`
     truncate users, user_credentials, sessions, audit_logs, org_units, role_assignments,
              conversations, conversation_members, messages, message_edits, message_attachments, files,
+             message_reactions, message_mentions,
              broadcasts cascade`);
   await ctx.redis.flushdb();
 }

@@ -14,7 +14,18 @@ export const MESSAGE_RULES = {
   deletedRetentionHours: 48,
   maxAttachmentsPerMessage: 10,
   maxGroupMembers: 1000,
+  /** Em grupos até este tamanho qualquer membro usa @todos; acima, só admins do grupo ou quem tem a permissão. */
+  mentionAllFreeUpTo: 50,
 } as const;
+
+/** Reações disponíveis (conjunto fixo: leve, sem seletor de emojis completo). */
+export const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '✅', '👀'] as const;
+export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
+
+export interface Reaction {
+  emoji: string;
+  userIds: string[];
+}
 
 export type ConversationType = 'direct' | 'group';
 export type MemberRole = 'owner' | 'admin' | 'member';
@@ -47,6 +58,8 @@ export interface ConversationSummary {
   lastSeq: number;
   lastReadSeq: number;
   unreadCount: number;
+  /** Não lidas que mencionam você (ou @todos). */
+  unreadMentions: number;
   mutedUntil: string | null;
   lastMessage: MessagePreview | null;
   lastMessageAt: string;
@@ -97,6 +110,35 @@ export interface Message {
   editedAt: string | null;
   deletedAt: string | null;
   broadcast: BroadcastRef | null;
+  /** Resposta numa thread: id da mensagem que abriu a thread. */
+  threadRootId: string | null;
+  /** Na mensagem que abriu a thread. */
+  replyCount: number;
+  lastReplyAt: string | null;
+  reactions: Reaction[];
+  /** Pessoas mencionadas (@Nome). */
+  mentions: string[];
+  /** @todos */
+  mentionsAll: boolean;
+}
+
+/** Thread: a mensagem que a abriu e as respostas, em ordem. */
+export interface ThreadPage {
+  root: Message;
+  replies: Message[];
+}
+
+/** Item da aba Menções. */
+export interface MentionItem {
+  message: Message;
+  senderName: string;
+  conversation: { id: string; type: ConversationType; title: string };
+  unread: boolean;
+}
+
+export interface MentionPage {
+  items: MentionItem[];
+  hasMore: boolean;
 }
 
 export interface MessagePage {
@@ -136,6 +178,11 @@ export const sendMessageSchema = z
     clientId: z.string().min(8).max(64),
     body: z.string().max(MESSAGE_RULES.maxBodyLength, 'Mensagem muito longa').default(''),
     attachmentIds: z.array(z.uuid()).max(MESSAGE_RULES.maxAttachmentsPerMessage).default([]),
+    /** Responder numa thread. */
+    threadRootId: z.uuid().optional(),
+    /** Pessoas mencionadas; o texto precisa conter "@Nome" de cada uma. */
+    mentions: z.array(z.uuid()).max(100).default([]),
+    mentionAll: z.boolean().default(false),
   })
   .transform((v) => ({ ...v, body: v.body.replace(/\s+$/u, '').replace(/^\s*\n/u, '') }))
   .refine((v) => v.body.trim().length > 0 || v.attachmentIds.length > 0, {
@@ -150,6 +197,12 @@ export const editMessageSchema = z.object({
     .trim()
     .min(1, 'A mensagem não pode ficar vazia')
     .max(MESSAGE_RULES.maxBodyLength),
+  mentions: z.array(z.uuid()).max(100).default([]),
+  mentionAll: z.boolean().default(false),
+});
+
+export const reactionSchema = z.object({
+  emoji: z.enum(REACTION_EMOJIS as unknown as [ReactionEmoji, ...ReactionEmoji[]]),
 });
 
 export const markReadSchema = z.object({ seq: z.number().int().min(0) });

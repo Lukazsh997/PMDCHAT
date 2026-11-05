@@ -55,23 +55,41 @@ export function useRealtimeSync(meId: string | undefined) {
 
       const viewing =
         activeConversation.get() === m.conversationId && document.visibilityState === 'visible';
-      if (viewing && m.senderId !== meId) markRead(qc, m.conversationId, m.seq);
-      if (m.senderId === meId || m.type !== 'text' || viewing) return;
+      if (viewing && m.senderId !== meId && !m.threadRootId) markRead(qc, m.conversationId, m.seq);
+      if (m.senderId === meId || m.type !== 'text') return;
+
+      const mentionsMe = m.mentionsAll || m.mentions.includes(meId);
+      if (mentionsMe) void qc.invalidateQueries({ queryKey: keys.mentions });
+      if (viewing && !m.threadRootId) return;
+      // Resposta de thread só avisa quem foi citado ou quem abriu a thread.
+      if (m.threadRootId && !mentionsMe) {
+        const root = qc
+          .getQueryData<MessagesState>(keys.messages(m.conversationId))
+          ?.items.find((x) => x.id === m.threadRootId);
+        if (root?.senderId !== meId) return;
+      }
 
       const summary = qc
         .getQueryData<ConversationSummary[]>(keys.list)
         ?.find((c) => c.id === m.conversationId);
-      if (summary && isMuted(summary)) return;
+      // Conversa silenciada continua avisando quando alguém cita você.
+      if (summary && isMuted(summary) && !mentionsMe) return;
       const who = senderName ?? 'Nova mensagem';
+      const where = summary?.type === 'group' ? ` em ${summary.title}` : '';
       showNotification({
         title: m.broadcast
           ? `Comunicado${senderName ? ` de ${senderName}` : ''} para ${m.broadcast.label}`
-          : summary?.type === 'group'
-            ? `${who} em ${summary.title}`
-            : who,
+          : mentionsMe
+            ? `${who} mencionou você${where}`
+            : m.threadRootId
+              ? `${who} respondeu na thread${where}`
+              : `${who}${where}`,
         body: m.body || (m.attachments.length ? `📎 ${m.attachments[0]!.name}` : ''),
-        tag: m.conversationId,
-        onClick: () => void navigate(`/c/${m.conversationId}`),
+        tag: m.threadRootId ?? m.conversationId,
+        onClick: () =>
+          void navigate(
+            `/c/${m.conversationId}${m.threadRootId ? `?thread=${m.threadRootId}` : ''}`,
+          ),
       });
     };
 

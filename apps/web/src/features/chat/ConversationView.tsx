@@ -2,25 +2,29 @@ import { ArrowLeft, Info, Upload } from 'lucide-react';
 import { MESSAGE_RULES } from '@plataforma/contracts';
 import { serverNow } from '@/lib/server-clock';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { Alert, Avatar, Button, Dialog, IconButton, Spinner, toast } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMe } from '../auth/auth-api';
 import {
   activeConversation,
   type ChatMessage,
+  dropLocal,
   markRead,
   useConversationDetail,
   useConversations,
   useDeleteMessage,
   useEditMessage,
   useMessages,
+  useReact,
   useSendMessage,
 } from './chat-api';
 import { Composer, type ComposerHandle } from './Composer';
 import { ConversationInfo } from './GroupInfoPanel';
 import { usePresence, useTyping, useWatchPresence } from './live-stores';
-import { MessageList } from './MessageList';
+import type { Mentionable } from './mentions';
+import { type MessageActions, MessageList } from './MessageList';
+import { ThreadPanel } from './ThreadPanel';
 
 const PRESENCE_TEXT = { online: 'disponível', away: 'ausente', offline: 'desconectado' } as const;
 
@@ -37,6 +41,22 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ChatMessage | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  const react = useReact(meId);
+  // A thread aberta fica na URL (?thread=…): dá para chegar nela pela aba Menções.
+  const [params, setParams] = useSearchParams();
+  const threadId = params.get('thread');
+  const openThread = (id: string | null) => {
+    setShowInfo(false);
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        if (id) next.set('thread', id);
+        else next.delete('thread');
+        return next;
+      },
+      { replace: true },
+    );
+  };
   const [dragging, setDragging] = useState(false);
   const composer = useRef<ComposerHandle>(null);
 
@@ -58,6 +78,35 @@ export function ConversationView({ conversationId }: { conversationId: string })
   useEffect(() => {
     if (lastSeq && document.visibilityState === 'visible') markRead(qc, conversationId, lastSeq);
   }, [qc, conversationId, lastSeq]);
+
+  const mentionables: Mentionable[] = (d?.members ?? [])
+    .filter((m) => m.id !== meId && !m.removed)
+    .map((m) => ({ id: m.id, displayName: m.displayName, avatarUrl: m.avatarUrl }));
+  const allowMentionAll =
+    d?.type === 'group' &&
+    (d.members.length <= MESSAGE_RULES.mentionAllFreeUpTo ||
+      d.myRole !== 'member' ||
+      me.permissions.includes('messages.mention_all'));
+  const actions: MessageActions = {
+    onEdit: setEditing,
+    onDelete: setConfirmDelete,
+    onRetry: (m) => {
+      dropLocal(qc, m);
+      void send(
+        m.body,
+        m.attachments,
+        {
+          threadRootId: m.threadRootId ?? undefined,
+          mentions: m.mentions,
+          mentionAll: m.mentionsAll,
+        },
+        m.clientId ?? undefined,
+      );
+    },
+    onReact: (message, emoji, on) =>
+      react.mutate({ message, emoji, on }, { onError: (e) => toast(e.message, 'error') }),
+    onOpenThread: (m) => openThread(m.threadRootId ?? m.id),
+  };
 
   const title = d?.title ?? summary?.title ?? '';
   const typingNames = typing.map(
@@ -156,17 +205,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
             loadOlder={messages.loadOlder}
             detail={d}
             meId={meId}
-            actions={{
-              onEdit: setEditing,
-              onDelete: setConfirmDelete,
-              onRetry: (m) => {
-                qc.setQueryData<{ items: ChatMessage[] }>(
-                  ['messages', conversationId],
-                  (s) => s && { ...s, items: s.items.filter((x) => x.id !== m.id) },
-                );
-                void send(m.body, m.attachments, m.clientId ?? undefined);
-              },
-            }}
+            actions={actions}
           />
         )}
 
@@ -191,13 +230,15 @@ export function ConversationView({ conversationId }: { conversationId: string })
               )
                 setEditing(last);
             }}
-            onSubmitEdit={async (body) => {
+            onSubmitEdit={async (body, extras) => {
               await edit
-                .mutateAsync({ id: editing!.id, body })
+                .mutateAsync({ id: editing!.id, body, ...extras })
                 .catch((e: Error) => toast(e.message, 'error'));
               setEditing(null);
             }}
-            onSend={(body, attachments) => void send(body, attachments)}
+            onSend={(body, attachments, extras) => void send(body, attachments, extras)}
+            mentionables={mentionables}
+            allowMentionAll={allowMentionAll}
           />
         )}
 
@@ -213,6 +254,22 @@ export function ConversationView({ conversationId }: { conversationId: string })
       {showInfo && d && (
         <div className="absolute inset-0 z-30 bg-surface lg:static lg:z-auto">
           <ConversationInfo detail={d} meId={meId} onClose={() => setShowInfo(false)} />
+        </div>
+      )}
+      {threadId && !showInfo && (
+        <div className="absolute inset-0 z-30 bg-surface lg:static lg:z-auto">
+          <ThreadPanel
+            key={threadId}
+            rootId={threadId}
+            conversationId={conversationId}
+            detail={d}
+            meId={meId}
+            actions={actions}
+            mentionables={mentionables}
+            allowMentionAll={allowMentionAll}
+            send={send}
+            onClose={() => openThread(null)}
+          />
         </div>
       )}
 

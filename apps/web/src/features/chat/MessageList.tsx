@@ -1,4 +1,4 @@
-import { type ConversationDetail, MESSAGE_RULES } from '@plataforma/contracts';
+import { type ConversationDetail, MESSAGE_RULES, REACTION_EMOJIS } from '@plataforma/contracts';
 import {
   AlertCircle,
   ArrowDown,
@@ -6,8 +6,10 @@ import {
   CheckCheck,
   Clock,
   Megaphone,
+  MessageSquareReply,
   MoreHorizontal,
   Pencil,
+  SmilePlus,
   Trash2,
 } from 'lucide-react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -25,6 +27,8 @@ export interface MessageActions {
   onEdit: (m: ChatMessage) => void;
   onDelete: (m: ChatMessage) => void;
   onRetry: (m: ChatMessage) => void;
+  onReact: (m: ChatMessage, emoji: string, on: boolean) => void;
+  onOpenThread: (m: ChatMessage) => void;
 }
 
 export function MessageList({
@@ -52,6 +56,7 @@ export function MessageList({
   const lastId = items.at(-1)?.id;
 
   const nameOf = (id: string) => detail?.members.find((m) => m.id === id)?.displayName ?? 'Alguém';
+  const people: PeopleIndex = { meId, nameOf };
   const isGroup = detail?.type === 'group';
   const others = detail?.members.filter((m) => m.id !== meId) ?? [];
   const readByAll = (seq: number) => others.length > 0 && others.every((m) => m.lastReadSeq >= seq);
@@ -153,6 +158,7 @@ export function MessageList({
                     read={readByAll(m.seq)}
                     actions={actions}
                     now={now}
+                    people={people}
                   />
                 )}
               </Fragment>
@@ -176,7 +182,13 @@ export function MessageList({
   );
 }
 
-function Bubble({
+/** Quem é quem na conversa: para nomes nas reações e nas menções. */
+export interface PeopleIndex {
+  meId: string;
+  nameOf: (id: string) => string;
+}
+
+export function Bubble({
   m,
   mine,
   showName,
@@ -185,6 +197,8 @@ function Bubble({
   read,
   actions,
   now,
+  people,
+  inThread = false,
 }: {
   now: number;
   m: ChatMessage;
@@ -194,6 +208,9 @@ function Bubble({
   continued: boolean;
   read: boolean;
   actions: MessageActions;
+  people: PeopleIndex;
+  /** Dentro do painel da thread: sem botão de responder nem resumo da thread. */
+  inThread?: boolean;
 }) {
   const deleted = !!m.deletedAt;
   // Só quem enviou, e só nos primeiros minutos (contados pelo relógio do servidor).
@@ -201,6 +218,8 @@ function Bubble({
   const own = mine && !deleted && !m.status && m.type === 'text';
   const editable = own && age < MESSAGE_RULES.editWindowMinutes * 60_000;
   const canDelete = own && age < MESSAGE_RULES.deleteWindowMinutes * 60_000;
+  const interactive = !deleted && !m.status && m.type === 'text';
+  const canThread = interactive && !inThread && !m.threadRootId;
   const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
   const menu = [
     ...(editable
@@ -223,10 +242,15 @@ function Bubble({
         ]
       : []),
   ];
+  const myReactions = new Set(
+    m.reactions.filter((r) => r.userIds.includes(people.meId)).map((r) => r.emoji),
+  );
+  const toolButton = 'rounded-full p-1 text-muted hover:bg-line/60 hover:text-ink';
 
   return (
     <li
-      className={`msg-row group flex ${mine ? 'justify-end' : 'justify-start'} ${continued ? 'mt-0.5' : 'mt-2.5'}`}
+      data-message-id={m.id}
+      className={`msg-row group flex flex-col ${mine ? 'items-end' : 'items-start'} ${continued ? 'mt-0.5' : 'mt-2.5'}`}
     >
       <div
         className={`flex max-w-[min(80%,42rem)] items-start gap-1 ${mine ? 'flex-row-reverse' : ''}`}
@@ -255,7 +279,14 @@ function Bubble({
           ) : (
             <div className="flex flex-col gap-1.5">
               {m.attachments.length > 0 && <Attachments items={m.attachments} />}
-              {m.body && <MessageText text={m.body} />}
+              {m.body && (
+                <MessageText
+                  text={m.body}
+                  mentionNames={m.mentions.map(people.nameOf)}
+                  mentionsAll={m.mentionsAll}
+                  myName={people.nameOf(people.meId)}
+                />
+              )}
             </div>
           )}
           <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] leading-4 text-muted">
@@ -264,31 +295,106 @@ function Bubble({
             {mine && !deleted && <Status m={m} read={read} />}
           </p>
         </div>
-        {menu.length > 0 && (
-          <div className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+        {interactive && (
+          <div className="flex items-center opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
             <Menu
-              label="Ações da mensagem"
+              label="Reagir"
+              layout="row"
               align={mine ? 'right' : 'left'}
-              items={menu}
+              items={REACTION_EMOJIS.map((emoji) => ({
+                label: emoji,
+                onSelect: () => actions.onReact(m, emoji, !myReactions.has(emoji)),
+              }))}
               trigger={(p) => (
                 <button
                   type="button"
                   {...p}
-                  aria-label="Ações da mensagem"
-                  className="rounded-full p-1 text-muted hover:bg-line/60 hover:text-ink"
+                  aria-label="Reagir"
+                  title="Reagir"
+                  className={toolButton}
                 >
-                  <MoreHorizontal size={16} aria-hidden="true" />
+                  <SmilePlus size={16} aria-hidden="true" />
                 </button>
               )}
             />
+            {canThread && (
+              <button
+                type="button"
+                onClick={() => actions.onOpenThread(m)}
+                aria-label="Responder em thread"
+                title="Responder em thread"
+                className={toolButton}
+              >
+                <MessageSquareReply size={16} aria-hidden="true" />
+              </button>
+            )}
+            {menu.length > 0 && (
+              <Menu
+                label="Ações da mensagem"
+                align={mine ? 'right' : 'left'}
+                items={menu}
+                trigger={(p) => (
+                  <button
+                    type="button"
+                    {...p}
+                    aria-label="Ações da mensagem"
+                    className={toolButton}
+                  >
+                    <MoreHorizontal size={16} aria-hidden="true" />
+                  </button>
+                )}
+              />
+            )}
           </div>
         )}
       </div>
+      {m.reactions.length > 0 && !deleted && (
+        <ul className="mt-1 flex max-w-[min(80%,42rem)] flex-wrap gap-1" aria-label="Reações">
+          {m.reactions.map((r) => {
+            const on = r.userIds.includes(people.meId);
+            const who = r.userIds
+              .map((u) => (u === people.meId ? 'Você' : people.nameOf(u).split(' ')[0]))
+              .join(', ');
+            return (
+              <li key={r.emoji}>
+                <button
+                  type="button"
+                  onClick={() => actions.onReact(m, r.emoji, !on)}
+                  title={who}
+                  aria-label={`${r.emoji} ${r.userIds.length}: ${who}${on ? '. Clique para tirar a sua reação' : ''}`}
+                  aria-pressed={on}
+                  className={`flex h-6 items-center gap-1 rounded-full border px-2 text-xs ${
+                    on
+                      ? 'border-primary bg-primary-soft font-semibold text-primary'
+                      : 'border-line bg-surface text-ink hover:border-muted'
+                  }`}
+                >
+                  <span aria-hidden="true">{r.emoji}</span>
+                  <span>{r.userIds.length}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {!inThread && m.replyCount > 0 && (
+        <button
+          type="button"
+          onClick={() => actions.onOpenThread(m)}
+          className="mt-1 flex items-center gap-1.5 rounded-[var(--radius-control)] px-1.5 py-0.5 text-xs font-semibold text-primary hover:bg-primary-soft"
+        >
+          <MessageSquareReply size={14} aria-hidden="true" />
+          {m.replyCount} {m.replyCount === 1 ? 'resposta' : 'respostas'}
+          {m.lastReplyAt && (
+            <span className="font-normal text-muted">· última às {formatTime(m.lastReplyAt)}</span>
+          )}
+        </button>
+      )}
       {m.status === 'failed' && (
         <button
           type="button"
           onClick={() => actions.onRetry(m)}
-          className="ml-2 self-center text-xs font-semibold text-danger hover:underline"
+          className="mt-1 text-xs font-semibold text-danger hover:underline"
         >
           Não enviada. Tentar de novo
         </button>

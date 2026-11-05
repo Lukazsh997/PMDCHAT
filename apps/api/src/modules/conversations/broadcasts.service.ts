@@ -192,7 +192,7 @@ export class BroadcastsService {
     // Entrega só a quem recebe: o remetente não ganha centenas de conversas na tela.
     for (const d of result.delivered) {
       this.events.emit('message.created', {
-        message: toMessage(d.row, result.attachments, ref),
+        message: toMessage(d.row, { attachments: result.attachments, broadcast: ref }),
         recipientIds: [d.recipientId],
       });
     }
