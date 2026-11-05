@@ -12,7 +12,6 @@ pelo Google Chrome e depende só de software livre.
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Busca               | Mensagens em português sem acento e por pedaço de palavra, com filtros (conversa, pessoa, período, anexo), pessoas e arquivos; abre a conversa na mensagem (Ctrl+K) |
 | Menções             | "@" sugere as pessoas da conversa, @todos em grupos; contador e aba Menções; menção avisa mesmo em conversa silenciada                                              |
-| Threads             | Respostas num painel lateral, com contador na mensagem; não poluem a conversa                                                                                       |
 | Reações             | 8 emojis, em tempo real                                                                                                                                             |
 | Canais de aviso     | Só administradores publicam; ligados a uma unidade, as pessoas lotadas entram e saem sozinhas                                                                       |
 | Papéis e permissões | Papéis editáveis no painel (criar, ajustar permissões, onde valem), com proteção contra escalada de privilégio                                                      |
@@ -123,7 +122,7 @@ login, anexos e o antivírus através do Nginx.
 11. [Comunicados em massa como mensagens diretas](docs/adr/0011-comunicados-em-massa.md)
 12. [Exclusão de usuários com anonimização](docs/adr/0012-exclusao-de-usuarios.md)
 13. [Busca no PostgreSQL, sem serviço extra](docs/adr/0013-busca-postgresql.md)
-14. [Threads, menções e reações](docs/adr/0014-threads-mencoes-reacoes.md)
+14. [Menções e reações (threads retiradas)](docs/adr/0014-threads-mencoes-reacoes.md)
 15. [Canais de aviso com membros pela lotação](docs/adr/0015-canais-de-aviso.md)
 16. [Papéis editáveis no banco](docs/adr/0016-papeis-editaveis.md)
 17. [Web Push e PWA](docs/adr/0017-web-push-pwa.md)

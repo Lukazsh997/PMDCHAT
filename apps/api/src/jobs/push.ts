@@ -29,8 +29,6 @@ interface Row {
   conversation_id: string;
   sender_id: string | null;
   body: string;
-  thread_root_id: string | null;
-  root_sender_id: string | null;
   mentions_all: boolean;
   attachment: string | null;
   sender_name: string | null;
@@ -45,8 +43,7 @@ interface Row {
  * Decide quem recebe o push de uma mensagem e envia. Recebe quem:
  *  - não está com nenhuma aba aberta (quem está recebe pelo tempo real);
  *  - tem nível de aviso que inclui esta mensagem ("só menções" exige ser citado);
- *  - não silenciou a conversa, a menos que tenha sido citado;
- *  - numa resposta de thread, foi citado ou abriu a thread.
+ *  - não silenciou a conversa, a menos que tenha sido citado.
  */
 export async function deliverPush(
   ctx: { db: Database; redis: Redis },
@@ -54,7 +51,7 @@ export async function deliverPush(
   send: PushSender,
 ): Promise<{ sent: number; skipped: number; removed: number }> {
   const [m] = (await ctx.db.execute(sql`
-    select m.id, m.conversation_id, m.sender_id, m.body, m.thread_root_id, r.sender_id as root_sender_id,
+    select m.id, m.conversation_id, m.sender_id, m.body,
            m.mentions_all, s.display_name as sender_name, b.unit_name as broadcast_label,
            c.type, c.name, c.is_channel,
            (select count(*) from conversation_members x where x.conversation_id = c.id) as member_count,
@@ -62,7 +59,6 @@ export async function deliverPush(
              where a.message_id = m.id order by a.position limit 1) as attachment
       from messages m
       join conversations c on c.id = m.conversation_id
-      left join messages r on r.id = m.thread_root_id
       left join users s on s.id = m.sender_id
       left join broadcasts b on b.id = m.broadcast_id
      where m.id = ${job.messageId} and m.deleted_at is null
@@ -97,7 +93,6 @@ export async function deliverPush(
     if (level === 'none') continue;
     if (level === 'mentions' && !mentioned) continue;
     if (r.muted_until && new Date(r.muted_until) > new Date() && !mentioned) continue;
-    if (m.thread_root_id && !mentioned && m.root_sender_id !== r.user_id) continue;
     if (await hasLiveConnection(ctx.redis, r.user_id)) continue;
     targets.push(r.user_id);
   }
@@ -118,13 +113,11 @@ export async function deliverPush(
         ? `Comunicado de ${who} para ${m.broadcast_label}`
         : mentioned
           ? `${who} mencionou você${where}`
-          : m.thread_root_id
-            ? `${who} respondeu na thread${where}`
-            : `${who}${where}`,
+          : `${who}${where}`,
       // A mensagem inteira não vai para o serviço de push: só o começo.
       body: text.length > 140 ? `${text.slice(0, 137)}…` : text,
-      url: `/c/${m.conversation_id}${m.thread_root_id ? `?thread=${m.thread_root_id}` : ''}`,
-      tag: m.thread_root_id ?? m.conversation_id,
+      url: `/c/${m.conversation_id}`,
+      tag: m.conversation_id,
     };
   };
 

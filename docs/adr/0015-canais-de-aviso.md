@@ -2,8 +2,8 @@
 
 **Status:** aceita (05/11/2026)
 
-**Decisão.** O canal é um grupo com `is_channel`: só o dono e os administradores publicam e
-respondem em thread; os demais leem e reagem. Quem entra vê os avisos anteriores. Um canal pode
+**Decisão.** O canal é um grupo com `is_channel`: só o dono e os administradores publicam;
+os demais leem e reagem. Quem entra vê os avisos anteriores. Um canal pode
 ser ligado a uma unidade (com ou sem subunidades). Nesse caso, os membros marcados como
 `auto_joined` são mantidos por sincronização. Ela roda ao criar o canal, quando alguém muda de
 lotação ou de situação (evento `user.membership_changed`) e quando o organograma muda

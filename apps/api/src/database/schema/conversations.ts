@@ -102,11 +102,6 @@ export const messages = pgTable(
     purgedAt: timestamp({ withTimezone: true }),
     /** Mensagem entregue por um comunicado em massa. */
     broadcastId: uuid().references((): AnyPgColumn => broadcasts.id, { onDelete: 'set null' }),
-    /** Resposta numa thread: aponta para a mensagem que abriu a thread. */
-    threadRootId: uuid().references((): AnyPgColumn => messages.id, { onDelete: 'set null' }),
-    /** Na mensagem que abriu a thread: quantas respostas e quando foi a última. */
-    replyCount: integer().notNull().default(0),
-    lastReplyAt: timestamp({ withTimezone: true }),
     /** @todos: menciona todos os membros da conversa. */
     mentionsAll: boolean().notNull().default(false),
     // body_tsv (tsvector gerado, configuração pt_unaccent) existe só no banco: ver a
@@ -117,9 +112,6 @@ export const messages = pgTable(
     uniqueIndex('messages_client_id_uq')
       .on(t.conversationId, t.senderId, t.clientId)
       .where(sql`${t.clientId} is not null`),
-    index('messages_thread_idx')
-      .on(t.threadRootId, t.seq)
-      .where(sql`${t.threadRootId} is not null`),
     index('messages_pending_purge_idx')
       .on(t.deletedAt)
       .where(sql`${t.deletedAt} is not null and ${t.purgedAt} is null`),

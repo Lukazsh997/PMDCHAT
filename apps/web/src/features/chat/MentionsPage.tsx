@@ -1,4 +1,4 @@
-import { AtSign, MessageSquareReply, Users } from 'lucide-react';
+import { AtSign, Users } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { Alert, Avatar, Spinner } from '@/components/ui';
 import { formatListTime } from '@/lib/format';
@@ -36,8 +36,7 @@ export function MentionsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const q = new URLSearchParams({ m: m.id });
-                    if (m.threadRootId) q.set('thread', m.threadRootId);
+                    const q = new URLSearchParams({ m: m.id, s: String(m.seq) });
                     void navigate(`/c/${c.id}?${q.toString()}`);
                   }}
                   className={`flex w-full gap-3 rounded-[var(--radius-panel)] border bg-surface px-4 py-3 text-left hover:border-primary ${unread ? 'border-primary/50' : 'border-line'}`}
@@ -54,11 +53,6 @@ export function MentionsPage() {
                           <Users size={13} className="mr-1 inline text-muted" aria-hidden="true" />
                         )}
                         {c.title}
-                        {m.threadRootId && (
-                          <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-muted">
-                            <MessageSquareReply size={12} aria-hidden="true" /> na thread
-                          </span>
-                        )}
                       </span>
                       <span className="shrink-0 text-xs text-muted">
                         {formatListTime(m.createdAt)}

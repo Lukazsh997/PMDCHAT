@@ -12,7 +12,7 @@ Chrome, a entrega passa pelo FCM, como decidido no documento de arquitetura.
 - **Decisão de quem recebe:** fica no worker (fila `push`). Recebe quem não está com nenhuma aba
   aberta (quem está recebe pelo tempo real), conforme o nível de aviso da conversa (padrão:
   diretas e canais avisam tudo, grupos com mais de 50 pessoas avisam só menções). Conversa
-  silenciada só avisa menções. Numa thread, só quem foi citado ou abriu a thread.
+  silenciada só avisa menções.
 - **Conteúdo:** o texto enviado tem no máximo 140 caracteres e vai cifrado (RFC 8291).
 
 A interface é instalável (manifest e ícones), e o service worker não guarda páginas em cache: o

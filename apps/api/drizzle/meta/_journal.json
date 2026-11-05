@@ -71,6 +71,13 @@
       "when": 1793895766682,
       "tag": "0009_fase2_push",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793904577583,
+      "tag": "0010_fase2_sem_threads",
+      "breakpoints": true
     }
   ]
 }

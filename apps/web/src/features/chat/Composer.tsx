@@ -40,7 +40,7 @@ export const Composer = forwardRef<
     /** Quem pode ser mencionado (sem incluir você). */
     mentionables?: Mentionable[];
     allowMentionAll?: boolean;
-    /** Rascunho separado (ex.: a caixa da thread). Padrão: a conversa. */
+    /** Rascunho separado. Padrão: a conversa. */
     draftKey?: string;
     inputId?: string;
     placeholder?: string;

@@ -261,7 +261,7 @@ describe('comunicados em massa', () => {
       cookie: sender.cookie,
       body: { units: [{ orgUnitId: u.adm.id, includeSubunits: true }] },
     });
-    expect(preview.body).toEqual({ recipientCount: 4 });
+    expect(preview.body).toEqual({ recipientCount: 4, limit: null });
 
     // Conversa direta que já existia é reaproveitada.
     const existing = (
@@ -341,8 +341,8 @@ describe('comunicados em massa', () => {
     }
   });
 
-  it('qualquer pessoa pode mandar para algumas pessoas escolhidas, mas setores exigem permissão', async () => {
-    const { u, elaine, marcus, aline } = await setup();
+  it('qualquer pessoa manda para pessoas e setores, até 50 destinatários sem a permissão', async () => {
+    const { u, elaine, marcus, aline, saude } = await setup();
     const ok = await post(elaine.cookie, {
       userIds: [marcus.user.id, aline.user.id],
       body: 'Bolo na copa às 16h!',
@@ -357,16 +357,27 @@ describe('comunicados em massa', () => {
     );
     expect(msgs.body!.items[0].broadcast.label).toBe('2 pessoas');
 
-    const unit = await post(elaine.cookie, {
-      units: [{ orgUnitId: u.cpa.id, includeSubunits: false }],
-      body: 'Oi',
+    // Setor fora de qualquer permissão: pode, porque é pequeno.
+    const small = await post(elaine.cookie, {
+      units: [{ orgUnitId: u.saude.id, includeSubunits: true }],
+      body: 'Oi, Saúde',
     });
-    expect(unit.status).toBe(403);
-    const many = await post(elaine.cookie, {
-      userIds: Array.from({ length: 51 }, () => crypto.randomUUID()),
-      body: 'Oi',
+    expect(small.status).toBe(201);
+    expect(small.body!.recipientCount).toBe(1);
+    expect(await listOf(saude.cookie)).toHaveLength(1);
+
+    // Setor grande sem a permissão: a prévia avisa o limite e o envio é recusado.
+    for (let i = 0; i < 50; i++)
+      await createUser(ctx, { username: `cpa${i}`, orgUnitId: u.cpa.id });
+    const target = { units: [{ orgUnitId: u.adm.id, includeSubunits: true }] };
+    const preview = await call(ctx, 'POST', '/broadcasts/preview', {
+      cookie: elaine.cookie,
+      body: target,
     });
-    expect(many.status).toBe(400);
+    expect(preview.body).toEqual({ recipientCount: 54, limit: 50 });
+    const big = await post(elaine.cookie, { ...target, body: 'Para todos' });
+    expect(big.status).toBe(400);
+    expect(big.body!.message).toContain('o limite é 50 pessoas');
   });
 
   it('pode limitar ao setor e leva anexos que todos os destinatários conseguem abrir', async () => {
@@ -386,15 +397,25 @@ describe('comunicados em massa', () => {
     expect(got.raw.toString()).toBe('conteúdo do edital');
   });
 
-  it('respeita o escopo de quem envia', async () => {
+  it('com a permissão, o setor no escopo não tem o limite de 50; fora do escopo, tem', async () => {
     const { u, sender, elaine } = await setup();
-    for (const unit of [u.saude, u.pref]) {
-      const r = await post(sender.cookie, {
-        units: [{ orgUnitId: unit.id, includeSubunits: true }],
-        body: 'Oi',
-      });
-      expect(r.status).toBe(403);
-    }
+    for (let i = 0; i < 50; i++)
+      await createUser(ctx, { username: `dca${i}`, orgUnitId: u.dca.id });
+    const inScope = await call(ctx, 'POST', '/broadcasts/preview', {
+      cookie: sender.cookie,
+      body: { units: [{ orgUnitId: u.adm.id, includeSubunits: true }] },
+    });
+    expect(inScope.body).toEqual({ recipientCount: 54, limit: null });
+    const mixed = await call(ctx, 'POST', '/broadcasts/preview', {
+      cookie: sender.cookie,
+      body: {
+        units: [
+          { orgUnitId: u.adm.id, includeSubunits: true },
+          { orgUnitId: u.saude.id, includeSubunits: true },
+        ],
+      },
+    });
+    expect(mixed.body).toEqual({ recipientCount: 55, limit: 50 });
     expect((await call(ctx, 'GET', '/broadcasts/scopes', { cookie: elaine.cookie })).body).toEqual({
       global: false,
       unitIds: [],

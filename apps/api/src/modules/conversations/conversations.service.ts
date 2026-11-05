@@ -84,7 +84,7 @@ export class ConversationsService {
              (select count(*) from conversation_members x where x.conversation_id = c.id) as member_count,
              (select count(*) from messages x
                where x.conversation_id = c.id and x.seq > greatest(m.last_read_seq, m.joined_seq)
-                 and x.type = 'text' and x.deleted_at is null and x.thread_root_id is null
+                 and x.type = 'text' and x.deleted_at is null
                  and x.sender_id is distinct from ${userId}) as unread_count,
              (select count(*) from messages x
                where x.conversation_id = c.id and x.seq > greatest(m.last_read_seq, m.joined_seq)
@@ -104,7 +104,6 @@ export class ConversationsService {
         left join org_units ou on ou.id = c.org_unit_id
         left join lateral (
           select * from messages x where x.conversation_id = c.id and x.seq > m.joined_seq
-            and x.thread_root_id is null
           order by x.seq desc limit 1
         ) lm on true
        where m.user_id = ${userId}

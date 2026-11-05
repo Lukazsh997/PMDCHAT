@@ -20,14 +20,7 @@ import { ApiRequestError } from '@/lib/api';
 import { useOpenDirect } from '../chat/chat-api';
 import { usePresence, useWatchPresence } from '../chat/live-stores';
 import { BroadcastComposer } from '../chat/BroadcastComposer';
-import {
-  canBroadcastTo,
-  type TreeNode,
-  useBroadcastScopes,
-  useOrgTree,
-  usePeopleSearch,
-  useUnitPeople,
-} from './org-api';
+import { type TreeNode, useOrgTree, usePeopleSearch, useUnitPeople } from './org-api';
 
 const normalize = (s: string) =>
   s
@@ -506,12 +499,10 @@ function UnitDetail({
   onUnit: (n: TreeNode) => void;
   onPerson: (p: DirectoryUser) => void;
 }) {
-  const scopes = useBroadcastScopes();
   const [broadcasting, setBroadcasting] = useState(false);
   const people = useUnitPeople(node.id);
   useWatchPresence((people.data ?? []).map((p) => p.id));
   const Icon = KIND_ICON[node.kind] ?? Users;
-  const canBroadcast = canBroadcastTo(scopes.data, node);
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -550,11 +541,9 @@ function UnitDetail({
                 </span>
               </p>
             </div>
-            {canBroadcast && (
-              <Button onClick={() => setBroadcasting(true)}>
-                <Megaphone size={16} aria-hidden="true" /> Enviar comunicado
-              </Button>
-            )}
+            <Button onClick={() => setBroadcasting(true)}>
+              <Megaphone size={16} aria-hidden="true" /> Enviar comunicado
+            </Button>
           </section>
 
           {node.children.length > 0 && (
@@ -610,13 +599,11 @@ function UnitDetail({
           </section>
         </div>
       </div>
-      {canBroadcast && (
-        <BroadcastComposer
-          open={broadcasting}
-          onClose={() => setBroadcasting(false)}
-          initialUnit={node}
-        />
-      )}
+      <BroadcastComposer
+        open={broadcasting}
+        onClose={() => setBroadcasting(false)}
+        initialUnit={node}
+      />
     </div>
   );
 }

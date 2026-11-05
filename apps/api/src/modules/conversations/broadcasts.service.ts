@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   BROADCAST_RULES,
+  type BroadcastPreview,
   type BroadcastResult,
   type BroadcastScopes,
   type broadcastTargetsSchema,
@@ -51,8 +52,9 @@ export class BroadcastsService {
   }
 
   /** Quantas pessoas receberiam (mostrado no botão de envio). */
-  async preview(auth: AuthContext, grants: Grants, targets: Targets): Promise<number> {
-    return (await this.resolve(auth, grants, targets)).recipients.length;
+  async preview(auth: AuthContext, grants: Grants, targets: Targets): Promise<BroadcastPreview> {
+    const r = await this.resolve(auth, grants, targets);
+    return { recipientCount: r.recipients.length, limit: r.limit };
   }
 
   async send(
@@ -71,9 +73,16 @@ export class BroadcastsService {
       .limit(1);
     if (previous) return previous;
 
-    const { recipients, label, units, people } = await this.resolve(auth, grants, input);
+    const { recipients, label, units, people, limit } = await this.resolve(auth, grants, input);
     if (!recipients.length) {
       throw new AppException(409, 'CONFLICT', 'Nenhum dos destinatários escolhidos está ativo.');
+    }
+    if (limit !== null && recipients.length > limit) {
+      throw new AppException(
+        400,
+        'VALIDATION_FAILED',
+        `Este envio alcança ${recipients.length} pessoas. Sem o papel de Comunicador para os setores escolhidos, o limite é ${limit} pessoas por envio.`,
+      );
     }
 
     const result = await this.db.transaction(async (tx) => {
@@ -236,27 +245,14 @@ export class BroadcastsService {
         const unit = rows.find((r) => r.id === x.orgUnitId);
         if (!unit || !unit.isActive)
           throw new AppException(404, 'NOT_FOUND', 'Setor não encontrado');
-        if (!grants.canOn('broadcast.send', unit.path)) {
-          throw new AppException(
-            403,
-            'FORBIDDEN',
-            `Você não pode enviar comunicados para ${unit.name}.`,
-          );
-        }
-        return { unit, includeSubunits: x.includeSubunits };
+        return {
+          unit,
+          includeSubunits: x.includeSubunits,
+          allowed: grants.canOn('broadcast.send', unit.path),
+        };
       });
 
     const userIds = [...new Set(t.userIds)].filter((id) => id !== auth.user.id);
-    if (
-      !grants.hasAny('broadcast.send') &&
-      userIds.length > BROADCAST_RULES.maxPeopleWithoutPermission
-    ) {
-      throw new AppException(
-        400,
-        'VALIDATION_FAILED',
-        `Escolha no máximo ${BROADCAST_RULES.maxPeopleWithoutPermission} pessoas por envio.`,
-      );
-    }
 
     const active = (): SQL[] => [
       isNull(users.deletedAt),
@@ -312,6 +308,16 @@ export class BroadcastsService {
       parts.length > 1 ? `${parts.slice(0, -1).join(', ')} e ${parts.at(-1)}` : parts[0]!
     ).slice(0, 200);
 
-    return { recipients: found.map((r) => r.id), label, units, people: userIds.length };
+    // Sem a permissão de comunicado sobre algum setor escolhido (ou sem nenhuma), o
+    // envio vale como mensagens individuais: no máximo algumas dezenas de pessoas.
+    const limited =
+      units.some((u) => !u.allowed) || (!units.length && !grants.hasAny('broadcast.send'));
+    return {
+      recipients: found.map((r) => r.id),
+      label,
+      units,
+      people: userIds.length,
+      limit: limited ? BROADCAST_RULES.maxPeopleWithoutPermission : null,
+    };
   }
 }

@@ -24,7 +24,6 @@ import { ConversationInfo } from './GroupInfoPanel';
 import { usePresence, useTyping, useWatchPresence } from './live-stores';
 import type { Mentionable } from './mentions';
 import { type MessageActions, MessageList } from './MessageList';
-import { ThreadPanel } from './ThreadPanel';
 
 const PRESENCE_TEXT = { online: 'disponível', away: 'ausente', offline: 'desconectado' } as const;
 
@@ -42,9 +41,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const [confirmDelete, setConfirmDelete] = useState<ChatMessage | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const react = useReact(meId);
-  // A thread aberta fica na URL (?thread=…): dá para chegar nela pela aba Menções.
   const [params, setParams] = useSearchParams();
-  const threadId = params.get('thread');
   // Mensagem a mostrar (?m=id&s=seq), vinda da busca ou das menções.
   const focusId = params.get('m');
   const focusSeq = Number(params.get('s')) || null;
@@ -62,18 +59,6 @@ export function ConversationView({ conversationId }: { conversationId: string })
       },
       { replace: true },
     );
-  const openThread = (id: string | null) => {
-    setShowInfo(false);
-    setParams(
-      (p) => {
-        const next = new URLSearchParams(p);
-        if (id) next.set('thread', id);
-        else next.delete('thread');
-        return next;
-      },
-      { replace: true },
-    );
-  };
   const [dragging, setDragging] = useState(false);
   const composer = useRef<ComposerHandle>(null);
 
@@ -98,7 +83,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
 
   const channel = d?.channel ?? summary?.channel ?? null;
   const myRole = d?.myRole ?? summary?.myRole;
-  // Canal de avisos: só administradores do canal publicam (e respondem em thread).
+  // Canal de avisos: só administradores do canal publicam.
   const canPost = !channel || (myRole !== undefined && myRole !== 'member');
   const mentionables: Mentionable[] = (d?.members ?? [])
     .filter((m) => m.id !== meId && !m.removed)
@@ -116,17 +101,12 @@ export function ConversationView({ conversationId }: { conversationId: string })
       void send(
         m.body,
         m.attachments,
-        {
-          threadRootId: m.threadRootId ?? undefined,
-          mentions: m.mentions,
-          mentionAll: m.mentionsAll,
-        },
+        { mentions: m.mentions, mentionAll: m.mentionsAll },
         m.clientId ?? undefined,
       );
     },
     onReact: (message, emoji, on) =>
       react.mutate({ message, emoji, on }, { onError: (e) => toast(e.message, 'error') }),
-    onOpenThread: (m) => openThread(m.threadRootId ?? m.id),
   };
 
   const title = d?.title ?? summary?.title ?? '';
@@ -232,8 +212,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
             loadOlder={messages.loadOlder}
             loadNewer={messages.loadNewer}
             onJumpLatest={() => void messages.jumpToLatest()}
-            focusId={threadId ? null : focusId}
-            canReply={canPost}
+            focusId={focusId}
             onFocused={clearFocus}
             detail={d}
             meId={meId}
@@ -295,23 +274,6 @@ export function ConversationView({ conversationId }: { conversationId: string })
       {showInfo && d && (
         <div className="absolute inset-0 z-30 bg-surface lg:static lg:z-auto">
           <ConversationInfo detail={d} meId={meId} onClose={() => setShowInfo(false)} />
-        </div>
-      )}
-      {threadId && !showInfo && (
-        <div className="absolute inset-0 z-30 bg-surface lg:static lg:z-auto">
-          <ThreadPanel
-            key={threadId}
-            rootId={threadId}
-            conversationId={conversationId}
-            detail={d}
-            meId={meId}
-            actions={actions}
-            mentionables={mentionables}
-            allowMentionAll={allowMentionAll}
-            canPost={canPost}
-            send={send}
-            onClose={() => openThread(null)}
-          />
         </div>
       )}
 

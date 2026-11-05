@@ -1,6 +1,6 @@
 # ADR 0014 — Threads, menções e reações
 
-**Status:** aceita (05/11/2026)
+**Status:** aceita (05/11/2026); a parte de threads foi retirada no mesmo dia (ver o fim)
 
 **Decisão.**
 
@@ -17,3 +17,9 @@
 A checagem no servidor impede menções forjadas por requisição direta.
 
 **Consequências.** Duas pessoas com o mesmo nome na conversa são citadas juntas.
+
+**Atualização (05/11/2026): threads retiradas.** A pedido da organização, as threads saíram do
+produto. Toda resposta volta a ser uma mensagem comum na conversa. A migração `0010` apaga
+`thread_root_id`, `reply_count` e `last_reply_at`. Respostas que já existiam passam a aparecer
+na conversa principal, na ordem em que foram enviadas, sem perda de conteúdo. Menções e reações
+continuam como descrito acima.

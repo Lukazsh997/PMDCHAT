@@ -42,58 +42,6 @@ const send = (cookie: string, conversationId: string, body: Record<string, unkno
 const list = async (cookie: string) =>
   (await call(ctx, 'GET', '/conversations', { cookie })).body as unknown as Record<string, any>[];
 
-describe('threads', () => {
-  it('respostas ficam na thread, contam na raiz e não entram na linha do tempo', async () => {
-    const { ana, bia, g } = await group();
-    const root = (await send(ana.cookie, g.id, { body: 'Quem revisa o edital?' })).body!;
-    const r1 = await send(bia.cookie, g.id, { body: 'Eu reviso.', threadRootId: root.id });
-    expect(r1.status).toBe(201);
-    expect(r1.body).toMatchObject({ threadRootId: root.id });
-    await send(ana.cookie, g.id, { body: 'Obrigada!', threadRootId: root.id });
-
-    const thread = await call(ctx, 'GET', `/messages/${root.id}/thread`, { cookie: bia.cookie });
-    expect(thread.body!.root).toMatchObject({ id: root.id, replyCount: 2 });
-    expect(thread.body!.replies.map((m: { body: string }) => m.body)).toEqual([
-      'Eu reviso.',
-      'Obrigada!',
-    ]);
-    // Abrir pela resposta leva à mesma thread.
-    const viaReply = await call(ctx, 'GET', `/messages/${r1.body!.id}/thread`, {
-      cookie: bia.cookie,
-    });
-    expect(viaReply.body!.root.id).toBe(root.id);
-
-    const timeline = await call(ctx, 'GET', `/conversations/${g.id}/messages`, {
-      cookie: bia.cookie,
-    });
-    const texts = timeline
-      .body!.items.filter((m: { type: string }) => m.type === 'text')
-      .map((m: { body: string }) => m.body);
-    expect(texts).toEqual(['Quem revisa o edital?']);
-    // A última mensagem da lista e as não lidas ignoram respostas de thread.
-    const caioList = await list((await signedIn(ctx, { username: 'zeca' })).cookie);
-    expect(caioList).toEqual([]);
-    const biaSummary = (await list(bia.cookie)).find((c) => c.id === g.id)!;
-    expect(biaSummary.lastMessage.text).toBe('Quem revisa o edital?');
-  });
-
-  it('não aceita resposta a resposta nem thread de outra conversa', async () => {
-    const { ana, bia, g } = await group();
-    const root = (await send(ana.cookie, g.id, { body: 'raiz' })).body!;
-    const reply = (await send(bia.cookie, g.id, { body: 'resp', threadRootId: root.id })).body!;
-    expect((await send(ana.cookie, g.id, { body: 'x', threadRootId: reply.id })).status).toBe(404);
-    const other = (
-      await call(ctx, 'POST', '/conversations/direct', {
-        cookie: ana.cookie,
-        body: { userId: bia.user.id },
-      })
-    ).body!;
-    expect((await send(ana.cookie, other.id, { body: 'x', threadRootId: root.id })).status).toBe(
-      404,
-    );
-  });
-});
-
 describe('reações', () => {
   it('liga e desliga a reação de cada pessoa', async () => {
     const { ana, bia, caio, g } = await group();

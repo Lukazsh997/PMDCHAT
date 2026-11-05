@@ -149,22 +149,11 @@ export interface Message {
   editedAt: string | null;
   deletedAt: string | null;
   broadcast: BroadcastRef | null;
-  /** Resposta numa thread: id da mensagem que abriu a thread. */
-  threadRootId: string | null;
-  /** Na mensagem que abriu a thread. */
-  replyCount: number;
-  lastReplyAt: string | null;
   reactions: Reaction[];
   /** Pessoas mencionadas (@Nome). */
   mentions: string[];
   /** @todos */
   mentionsAll: boolean;
-}
-
-/** Thread: a mensagem que a abriu e as respostas, em ordem. */
-export interface ThreadPage {
-  root: Message;
-  replies: Message[];
 }
 
 /** Item da aba Menções. */
@@ -251,8 +240,6 @@ export const sendMessageSchema = z
     clientId: z.string().min(8).max(64),
     body: z.string().max(MESSAGE_RULES.maxBodyLength, 'Mensagem muito longa').default(''),
     attachmentIds: z.array(z.uuid()).max(MESSAGE_RULES.maxAttachmentsPerMessage).default([]),
-    /** Responder numa thread. */
-    threadRootId: z.uuid().optional(),
     /** Pessoas mencionadas; o texto precisa conter "@Nome" de cada uma. */
     mentions: z.array(z.uuid()).max(100).default([]),
     mentionAll: z.boolean().default(false),
@@ -285,7 +272,10 @@ export const markReadSchema = z.object({ seq: z.number().int().min(0) });
 export const BROADCAST_RULES = {
   /** Teto de destinatários por envio. */
   maxRecipients: 5000,
-  /** Sem a permissão de comunicados, só é possível escolher pessoas, até este número. */
+  /**
+   * Sem a permissão de comunicado sobre os setores escolhidos (ou sem nenhuma), o envio
+   * alcança no máximo este número de pessoas.
+   */
   maxPeopleWithoutPermission: 50,
   maxUnits: 50,
   maxPeople: 500,
@@ -344,6 +334,11 @@ export interface BroadcastScopes {
 
 export interface BroadcastPreview {
   recipientCount: number;
+  /**
+   * Máximo de destinatários deste envio: sem a permissão de comunicado sobre algum
+   * setor escolhido, vale o limite de mensagens individuais. null = sem esse limite.
+   */
+  limit: number | null;
 }
 
 /* --------------------------------- Busca -------------------------------- */
@@ -388,7 +383,6 @@ export interface SearchFileHit {
   file: Attachment;
   messageId: string;
   seq: number;
-  threadRootId: string | null;
   conversation: { id: string; type: ConversationType; title: string };
   senderName: string;
   createdAt: string;

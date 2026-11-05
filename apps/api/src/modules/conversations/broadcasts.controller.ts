@@ -36,10 +36,10 @@ export class BroadcastsController {
     @Req() req: FastifyRequest,
   ): Promise<BroadcastPreview> {
     const grants = await requestGrants(req, this.permissions);
-    return { recipientCount: await this.broadcasts.preview(auth, grants, body) };
+    return this.broadcasts.preview(auth, grants, body);
   }
 
-  /** Setores exigem a permissão de comunicados; pessoas escolhidas, não (ver o serviço). */
+  /** Qualquer pessoa envia; sem a permissão de comunicado, até 50 destinatários (ver o serviço). */
   @Post()
   async send(
     @CurrentAuth() auth: AuthContext,

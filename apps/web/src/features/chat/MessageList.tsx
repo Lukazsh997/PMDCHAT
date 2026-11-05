@@ -6,7 +6,6 @@ import {
   CheckCheck,
   Clock,
   Megaphone,
-  MessageSquareReply,
   MoreHorizontal,
   Pencil,
   SmilePlus,
@@ -28,7 +27,6 @@ export interface MessageActions {
   onDelete: (m: ChatMessage) => void;
   onRetry: (m: ChatMessage) => void;
   onReact: (m: ChatMessage, emoji: string, on: boolean) => void;
-  onOpenThread: (m: ChatMessage) => void;
 }
 
 export function MessageList({
@@ -43,10 +41,7 @@ export function MessageList({
   detail,
   meId,
   actions,
-  canReply = true,
 }: {
-  /** Pode responder em thread (num canal, só quem publica). */
-  canReply?: boolean;
   items: ChatMessage[];
   hasMore: boolean;
   /** Aberta no meio da conversa: há mensagens mais novas a carregar. */
@@ -199,7 +194,6 @@ export function MessageList({
                     actions={actions}
                     now={now}
                     people={people}
-                    canReply={canReply}
                     highlight={highlight === m.id}
                   />
                 )}
@@ -235,7 +229,7 @@ export interface PeopleIndex {
   nameOf: (id: string) => string;
 }
 
-export function Bubble({
+function Bubble({
   m,
   mine,
   showName,
@@ -245,11 +239,8 @@ export function Bubble({
   actions,
   now,
   people,
-  inThread = false,
   highlight = false,
-  canReply = true,
 }: {
-  canReply?: boolean;
   now: number;
   m: ChatMessage;
   mine: boolean;
@@ -259,8 +250,6 @@ export function Bubble({
   read: boolean;
   actions: MessageActions;
   people: PeopleIndex;
-  /** Dentro do painel da thread: sem botão de responder nem resumo da thread. */
-  inThread?: boolean;
   /** Mensagem aberta pela busca ou pelas menções. */
   highlight?: boolean;
 }) {
@@ -271,7 +260,6 @@ export function Bubble({
   const editable = own && age < MESSAGE_RULES.editWindowMinutes * 60_000;
   const canDelete = own && age < MESSAGE_RULES.deleteWindowMinutes * 60_000;
   const interactive = !deleted && !m.status && m.type === 'text';
-  const canThread = interactive && canReply && !inThread && !m.threadRootId;
   const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
   const menu = [
     ...(editable
@@ -369,17 +357,6 @@ export function Bubble({
                 </button>
               )}
             />
-            {canThread && (
-              <button
-                type="button"
-                onClick={() => actions.onOpenThread(m)}
-                aria-label="Responder em thread"
-                title="Responder em thread"
-                className={toolButton}
-              >
-                <MessageSquareReply size={16} aria-hidden="true" />
-              </button>
-            )}
             {menu.length > 0 && (
               <Menu
                 label="Ações da mensagem"
@@ -428,19 +405,6 @@ export function Bubble({
             );
           })}
         </ul>
-      )}
-      {!inThread && m.replyCount > 0 && (
-        <button
-          type="button"
-          onClick={() => actions.onOpenThread(m)}
-          className="mt-1 flex items-center gap-1.5 rounded-[var(--radius-control)] px-1.5 py-0.5 text-xs font-semibold text-primary hover:bg-primary-soft"
-        >
-          <MessageSquareReply size={14} aria-hidden="true" />
-          {m.replyCount} {m.replyCount === 1 ? 'resposta' : 'respostas'}
-          {m.lastReplyAt && (
-            <span className="font-normal text-muted">· última às {formatTime(m.lastReplyAt)}</span>
-          )}
-        </button>
       )}
       {m.status === 'failed' && (
         <button

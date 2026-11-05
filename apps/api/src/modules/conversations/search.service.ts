@@ -112,7 +112,7 @@ export class SearchService {
   async searchFiles(userId: string, q: FilesQuery): Promise<SearchFileHit[]> {
     const term = `%${q.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     const rows = (await this.db.execute(sql`
-      select distinct on (f.id) f.id as file_id, m.id as message_id, m.seq, m.thread_root_id,
+      select distinct on (f.id) f.id as file_id, m.id as message_id, m.seq,
              m.created_at, c.id as conversation_id, c.type, ${titleSql(userId)} as title,
              s.display_name as sender_name
         from files f
@@ -129,7 +129,6 @@ export class SearchService {
       file_id: string;
       message_id: string;
       seq: string;
-      thread_root_id: string | null;
       created_at: Date;
       conversation_id: string;
       type: 'direct' | 'group';
@@ -154,7 +153,6 @@ export class SearchService {
       file: byId.get(r.file_id)!,
       messageId: r.message_id,
       seq: Number(r.seq),
-      threadRootId: r.thread_root_id,
       conversation: { id: r.conversation_id, type: r.type, title: r.title ?? 'Conversa' },
       senderName: r.sender_name ?? 'Alguém',
       createdAt: new Date(r.created_at).toISOString(),

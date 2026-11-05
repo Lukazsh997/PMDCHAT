@@ -7,7 +7,6 @@ import {
   MESSAGE_RULES,
   type MessagePage,
   type Reaction,
-  type ThreadPage,
 } from '@plataforma/contracts';
 import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { AppException } from '../../common/app-exception.js';
@@ -50,12 +49,7 @@ export class MessagesService {
     q: { before?: number; after?: number; around?: number; limit: number },
   ): Promise<MessagePage> {
     const { member } = await this.conversations.requireMember(userId, conversationId);
-    const base = [
-      eq(messages.conversationId, conversationId),
-      gt(messages.seq, member.joinedSeq),
-      // Respostas de thread ficam no painel da thread, não na linha do tempo.
-      isNull(messages.threadRootId),
-    ];
+    const base = [eq(messages.conversationId, conversationId), gt(messages.seq, member.joinedSeq)];
     let rows: MessageRow[];
     if (q.around !== undefined) {
       // Abre a conversa no meio: metade antes da mensagem procurada, metade a partir dela.
@@ -119,7 +113,6 @@ export class MessagesService {
       clientId: string;
       body: string;
       attachmentIds: string[];
-      threadRootId?: string;
       mentions: string[];
       mentionAll: boolean;
     },
@@ -133,24 +126,6 @@ export class MessagesService {
     const existing = await this.findByClientId(conversationId, auth.user.id, input.clientId);
     if (existing) return existing;
 
-    if (input.threadRootId) {
-      const [root] = await this.db
-        .select()
-        .from(messages)
-        .where(eq(messages.id, input.threadRootId))
-        .limit(1);
-      if (
-        !root ||
-        root.conversationId !== conversationId ||
-        root.seq <= member.joinedSeq ||
-        root.type !== 'text' ||
-        root.threadRootId
-      ) {
-        throw new AppException(404, 'NOT_FOUND', 'A mensagem que abriu esta thread não existe.');
-      }
-      if (root.deletedAt)
-        throw new AppException(409, 'CONFLICT', 'A mensagem que abriu esta thread foi apagada.');
-    }
     const mentions = await this.resolveMentions(auth, conversationId, input, grants);
 
     const row = await this.db.transaction(async (tx) => {
@@ -188,7 +163,6 @@ export class MessagesService {
           senderId: auth.user.id,
           body: input.body,
           clientId: input.clientId,
-          threadRootId: input.threadRootId ?? null,
           mentionsAll: mentions.all,
         })
         .returning();
@@ -196,12 +170,6 @@ export class MessagesService {
         await tx
           .insert(messageMentions)
           .values(mentions.userIds.map((userId) => ({ messageId: msg!.id, userId })));
-      }
-      if (input.threadRootId) {
-        await tx
-          .update(messages)
-          .set({ replyCount: sql`${messages.replyCount} + 1`, lastReplyAt: new Date() })
-          .where(eq(messages.id, input.threadRootId));
       }
       if (input.attachmentIds.length) {
         await tx.insert(messageAttachments).values(
@@ -227,22 +195,7 @@ export class MessagesService {
     const [message] = await this.withAttachments([row]);
     const recipientIds = await this.conversations.memberIds(conversationId);
     this.events.emit('message.created', { message: message!, recipientIds });
-    if (input.threadRootId) await this.publishUpdate(await this.row(input.threadRootId));
     return message!;
-  }
-
-  /** Thread: a mensagem raiz e todas as respostas, em ordem. */
-  async thread(userId: string, rootId: string): Promise<ThreadPage> {
-    const root = await this.load(userId, rootId);
-    if (root.threadRootId) return this.thread(userId, root.threadRootId);
-    const replies = await this.db
-      .select()
-      .from(messages)
-      .where(eq(messages.threadRootId, rootId))
-      .orderBy(asc(messages.seq))
-      .limit(1000);
-    const [r, ...rest] = await this.withAttachments([root, ...replies]);
-    return { root: r!, replies: rest };
   }
 
   /** Liga ou desliga a minha reação com este emoji. */

@@ -6,15 +6,7 @@ import {
   type SearchMessagesPage,
 } from '@plataforma/contracts';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import {
-  Download,
-  FileText,
-  MessageSquare,
-  MessageSquareReply,
-  Search,
-  Users,
-  X,
-} from 'lucide-react';
+import { Download, FileText, MessageSquare, Search, Users, X } from 'lucide-react';
 import { useDeferredValue, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Alert, Avatar, Button, Select, Spinner, toast } from '@/components/ui';
@@ -112,15 +104,8 @@ export function SearchPage() {
     enabled: ready && (tab === 'tudo' || tab === 'arquivos'),
   });
 
-  const openMessage = (h: {
-    conversationId: string;
-    messageId: string;
-    seq: number;
-    threadRootId: string | null;
-  }) => {
-    const qs = new URLSearchParams({ m: h.messageId });
-    if (h.threadRootId) qs.set('thread', h.threadRootId);
-    else qs.set('s', String(h.seq));
+  const openMessage = (h: { conversationId: string; messageId: string; seq: number }) => {
+    const qs = new URLSearchParams({ m: h.messageId, s: String(h.seq) });
     void navigate(`/c/${h.conversationId}?${qs.toString()}`);
   };
 
@@ -281,7 +266,6 @@ export function SearchPage() {
                                 conversationId: h.conversation.id,
                                 messageId: h.message.id,
                                 seq: h.message.seq,
-                                threadRootId: h.message.threadRootId,
                               })
                             }
                             className="flex w-full gap-3 rounded-[var(--radius-panel)] border border-line bg-surface px-4 py-3 text-left hover:border-primary"
@@ -299,11 +283,6 @@ export function SearchPage() {
                                   <span className="font-semibold">{h.senderName}</span>
                                   {h.conversation.type === 'group' && (
                                     <span className="text-muted"> em {h.conversation.title}</span>
-                                  )}
-                                  {h.message.threadRootId && (
-                                    <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted">
-                                      <MessageSquareReply size={12} aria-hidden="true" /> na thread
-                                    </span>
                                   )}
                                 </span>
                                 <span className="shrink-0 text-xs text-muted">
@@ -369,7 +348,6 @@ export function SearchPage() {
                               conversationId: f.conversation.id,
                               messageId: f.messageId,
                               seq: f.seq,
-                              threadRootId: f.threadRootId,
                             })
                           }
                         >

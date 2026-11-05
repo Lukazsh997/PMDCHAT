@@ -29,7 +29,6 @@ import {
   type SearchMessagesPage,
   searchMessagesSchema,
   sendMessageSchema,
-  type ThreadPage,
   setMemberRoleSchema,
   updateConversationSchema,
   updateMySettingsSchema,
@@ -173,11 +172,6 @@ export class ConversationsController {
     @Req() req: FastifyRequest,
   ): Promise<Message> {
     return this.messages.send(auth, cid, b, await requestGrants(req, this.permissions));
-  }
-
-  @Get('messages/:id/thread')
-  thread(@CurrentAuth() auth: AuthContext, @Param('id', id) mid: string): Promise<ThreadPage> {
-    return this.messages.thread(auth.user.id, mid);
   }
 
   @Put('messages/:id/reactions')

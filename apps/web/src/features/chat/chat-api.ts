@@ -8,7 +8,6 @@ import type {
   MessagePage,
   MessagePreview,
   NotificationLevel,
-  ThreadPage,
 } from '@plataforma/contracts';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
@@ -21,18 +20,11 @@ export const keys = {
   detail: (id: string) => ['conversation', id] as const,
   messages: (id: string) => ['messages', id] as const,
   directory: (q: string) => ['directory', q] as const,
-  thread: (rootId: string) => ['thread', rootId] as const,
   mentions: ['mentions'] as const,
 };
 
-export interface ThreadState {
-  root: ChatMessage;
-  replies: ChatMessage[];
-}
-
 /** Opções de envio além do texto e dos anexos. */
 export interface SendExtras {
-  threadRootId?: string;
   mentions?: string[];
   mentionAll?: boolean;
 }
@@ -178,18 +170,8 @@ export function merge(a: ChatMessage[], b: ChatMessage[]): ChatMessage[] {
   );
 }
 
-/**
- * Coloca a mensagem onde ela aparece: respostas de thread vão para o painel da thread;
- * as demais para a linha do tempo (e, se abriram uma thread, atualizam a raiz dela).
- */
+/** Coloca (ou atualiza) a mensagem na linha do tempo da conversa. */
 export function upsertMessage(qc: QueryClient, m: ChatMessage): void {
-  if (m.threadRootId) {
-    qc.setQueryData<ThreadState>(
-      keys.thread(m.threadRootId),
-      (t) => t && { ...t, replies: merge(t.replies, [m]) },
-    );
-    return;
-  }
   qc.setQueryData<MessagesState>(keys.messages(m.conversationId), (s) => {
     if (!s) return s;
     // Aberta no meio: mensagens novas chegam quando a pessoa voltar ao fim.
@@ -197,34 +179,14 @@ export function upsertMessage(qc: QueryClient, m: ChatMessage): void {
     if (s.hasNewer && isNew) return s;
     return { ...s, items: merge(s.items, [m]) };
   });
-  if (!m.status) {
-    qc.setQueryData<ThreadState>(keys.thread(m.id), (t) => t && { ...t, root: m });
-  }
 }
 
 /** Retira uma mensagem otimista (antes de colocar a versão do servidor ou ao reenviar). */
 export function dropLocal(qc: QueryClient, m: ChatMessage): void {
-  if (m.threadRootId) {
-    qc.setQueryData<ThreadState>(
-      keys.thread(m.threadRootId),
-      (t) => t && { ...t, replies: t.replies.filter((x) => x.id !== m.id) },
-    );
-  } else {
-    qc.setQueryData<MessagesState>(
-      keys.messages(m.conversationId),
-      (s) => s && { ...s, items: s.items.filter((x) => x.id !== m.id) },
-    );
-  }
-}
-
-export function useThread(rootId: string | null) {
-  return useQuery({
-    queryKey: keys.thread(rootId ?? ''),
-    queryFn: () => api<ThreadPage>('GET', `/messages/${rootId}/thread`),
-    enabled: !!rootId,
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-  });
+  qc.setQueryData<MessagesState>(
+    keys.messages(m.conversationId),
+    (s) => s && { ...s, items: s.items.filter((x) => x.id !== m.id) },
+  );
 }
 
 export function useMentions() {
@@ -281,13 +243,6 @@ export function applyToList(
       m.type === 'text' &&
       (m.mentionsAll || m.mentions.includes(meId)) &&
       activeConversation.get() !== c.id;
-    // Resposta de thread não muda a última mensagem nem as não lidas da conversa.
-    if (m.threadRootId) {
-      if (!mentionsMe) return list;
-      const bumped = list.slice();
-      bumped[idx] = { ...c, unreadMentions: c.unreadMentions + 1 };
-      return bumped;
-    }
     const counts = m.type === 'text' && !mine && activeConversation.get() !== c.id;
     const updated: ConversationSummary = {
       ...c,
@@ -341,9 +296,6 @@ export function useSendMessage(conversationId: string, meId: string) {
         editedAt: null,
         deletedAt: null,
         broadcast: null,
-        threadRootId: extras.threadRootId ?? null,
-        replyCount: 0,
-        lastReplyAt: null,
         reactions: [],
         mentions: extras.mentions ?? [],
         mentionsAll: !!extras.mentionAll,
@@ -356,7 +308,6 @@ export function useSendMessage(conversationId: string, meId: string) {
           clientId,
           body,
           attachmentIds: attachments.map((a) => a.id),
-          threadRootId: extras.threadRootId,
           mentions: extras.mentions ?? [],
           mentionAll: !!extras.mentionAll,
         });

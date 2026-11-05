@@ -82,7 +82,7 @@ describe('Web Push', () => {
     ]);
   });
 
-  it('respeita silenciar, o nível "só menções" e a thread', async () => {
+  it('respeita silenciar e o nível "só menções"', async () => {
     const { ana, bia, caio, g } = await setup();
     await call(ctx, 'PATCH', `/conversations/${g.id}/me`, {
       cookie: bia.cookie,
@@ -113,20 +113,15 @@ describe('Web Push', () => {
     expect(s2.sent.map((x) => x.userId).sort()).toEqual([bia.user.id, caio.user.id].sort());
     expect(s2.sent[0]!.payload.title).toBe('Ana Lima mencionou você em Projeto');
 
-    // Resposta de thread avisa só quem abriu a thread (Ana) — Bia e Caio, não.
+    // Sem silêncio, quem avisa tudo recebe; quem escolheu "só menções" (Caio), não.
     await call(ctx, 'POST', '/push/subscriptions', { cookie: ana.cookie, body: sub(3) });
-    await call(ctx, 'PATCH', `/conversations/${g.id}/me`, {
-      cookie: bia.cookie,
-      body: { mutedUntil: null },
-    });
-    const reply = (await send(bia.cookie, g.id, { body: 'Respondendo', threadRootId: plain.id }))
-      .body!;
+    const reply = (await send(bia.cookie, g.id, { body: 'Respondendo' })).body!;
     const s3 = fakeSender();
     await deliver(reply.id, [ana.user.id, caio.user.id], s3);
     expect(s3.sent.map((x) => x.userId)).toEqual([ana.user.id]);
     expect(s3.sent[0]!.payload).toMatchObject({
-      title: 'Bia Souza respondeu na thread em Projeto',
-      url: `/c/${g.id}?thread=${plain.id}`,
+      title: 'Bia Souza em Projeto',
+      url: `/c/${g.id}`,
     });
   });
 
