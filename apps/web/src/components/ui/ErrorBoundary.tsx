@@ -9,7 +9,7 @@ export class ErrorBoundary extends Component<
   { children: ReactNode; resetKey?: string },
   { error: Error | null; key?: string }
 > {
-  state: { error: Error | null; key?: string } = { error: null, key: this.props.resetKey };
+  override state: { error: Error | null; key?: string } = { error: null, key: this.props.resetKey };
 
   static getDerivedStateFromError(error: Error) {
     return { error };
@@ -22,11 +22,11 @@ export class ErrorBoundary extends Component<
     return props.resetKey !== state.key ? { error: null, key: props.resetKey } : null;
   }
 
-  componentDidCatch(error: Error) {
+  override componentDidCatch(error: Error) {
     console.error('Falha na tela:', error);
   }
 
-  render() {
+  override render() {
     if (!this.state.error) return this.props.children;
     return (
       <div role="alert" className="flex h-full items-center justify-center bg-chat-bg px-6">
