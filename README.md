@@ -18,24 +18,29 @@ pelo Google Chrome e depende só de software livre.
 
 **Fase 1 — Chat**
 
-| Área         | Entregue                                                                                                                                                                                            |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Conversas    | Diretas e em grupo, em tempo real (Socket.IO + Valkey), não lidas, confirmação de leitura, "digitando…", presença (disponível, ausente, desconectado), rascunho por conversa                        |
-| Mensagens    | Envio que não duplica em quedas de rede, só o autor edita ou apaga, até 10 min após o envio (prazo pelo relógio do servidor); histórico de edições guardado; apagadas somem em definitivo após 48 h |
-| Anexos       | Até 50 MB, arrastar e soltar ou colar imagem, bloqueio de executáveis pelo nome e pelo conteúdo, antivírus ClamAV, imagens sem metadados (EXIF/GPS) e com miniatura                                 |
-| Grupos       | Dono e administradores, adicionar e remover pessoas (quem entra não vê o histórico anterior), sair do grupo, silenciar                                                                              |
-| Notificações | Notificação do Chrome com a aba em segundo plano, contador no título e no ícone da aba                                                                                                              |
-| Organograma  | Aba para todos com a árvore (órgão › secretarias › subsecretarias › setores) e as pessoas de cada unidade, quantas estão online e busca por setor ou pessoa                                         |
-| Comunicados  | Botão "Comunicado" na lista de conversas: pessoas e setores na mesma busca, entregue em conversa particular a cada um; setores exigem o papel Comunicador                                           |
-| Perfil       | Foto de perfil (recortada e sem metadados no servidor)                                                                                                                                              |
-| Permissões   | Papéis com escopo: super administrador, administrador de unidade (vale para a unidade e as de baixo), comunicador e auditor                                                                         |
-| Painel       | Usuários (criar, editar, bloquear, excluir, senha temporária, convidados com prazo), papéis, organograma, auditoria com filtros, indicadores                                                        |
-| Segurança    | Verificação em duas etapas (TOTP) obrigatória para quem acessa o painel; sessões no servidor; proteção CSRF; auditoria                                                                              |
+| Área             | Entregue                                                                                                                                                                                            |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Conversas        | Diretas e em grupo, em tempo real (Socket.IO + Valkey), não lidas, confirmação de leitura, "digitando…", presença (disponível, ausente, desconectado), rascunho por conversa                        |
+| Mensagens        | Envio que não duplica em quedas de rede, só o autor edita ou apaga, até 10 min após o envio (prazo pelo relógio do servidor); histórico de edições guardado; apagadas somem em definitivo após 48 h |
+| Anexos           | Até 50 MB, arrastar e soltar ou colar imagem, bloqueio de executáveis pelo nome e pelo conteúdo, antivírus ClamAV, imagens sem metadados (EXIF/GPS) e com miniatura                                 |
+| Grupos           | Dono e administradores, adicionar e remover pessoas (quem entra não vê o histórico anterior), sair do grupo, silenciar                                                                              |
+| Notificações     | Notificação do Chrome com a aba em segundo plano, contador no título e no ícone da aba                                                                                                              |
+| Organograma      | Aba para todos com a árvore (órgão › secretarias › subsecretarias › setores) e as pessoas de cada unidade, quantas estão online e busca por setor ou pessoa                                         |
+| Comunicados      | Botão "Comunicado" na lista de conversas: pessoas e setores na mesma busca, entregue em conversa particular a cada um; setores exigem o papel Comunicador                                           |
+| Perfil           | Foto de perfil (recortada e sem metadados no servidor)                                                                                                                                              |
+| Active Directory | Login com a senha da rede; sincronização de pessoas, OUs → unidades e grupos → papéis, com prévia e trava contra desativações em massa                                                              |
+| Permissões       | Papéis com escopo: super administrador, administrador de unidade (vale para a unidade e as de baixo), comunicador e auditor                                                                         |
+| Painel           | Usuários (criar, editar, bloquear, excluir, senha temporária, convidados com prazo), papéis, organograma, auditoria com filtros, indicadores                                                        |
+| Segurança        | Verificação em duas etapas (TOTP) obrigatória para quem acessa o painel; sessões no servidor; proteção CSRF; auditoria                                                                              |
 
 **Fase 0 — Fundação:** monorepo, autenticação local, Docker Compose, Nginx, scripts de operação e CI.
 
-Próximas fases: integração com o Active Directory (Fase 3); cliente para Windows com notificações
-nativas (Fase 4).
+**Fase 3 — Active Directory:** login com a senha do AD (LDAPS/StartTLS), criação da conta no
+primeiro login, sincronização agendada (nome, e-mail, cargo, lotação pela OU, papéis por grupo,
+desativação de quem sai do AD) e painel de configuração. Ver
+[ADR 0018](docs/adr/0018-active-directory.md) e [implantação](docs/implantacao.md#active-directory).
+
+Próxima fase: cliente para Windows com notificações nativas (Fase 4).
 
 ## Estrutura
 

@@ -37,6 +37,9 @@ const ACTIONS: Record<string, string> = {
   'message.deleted_by_moderator': 'Apagou mensagem de outra pessoa',
   'file.rejected': 'Arquivo barrado pelo antivírus',
   'broadcast.sent': 'Enviou comunicado em massa',
+  'ldap.settings_changed': 'Alterou a conexão com o AD',
+  'ldap.mappings_changed': 'Alterou o mapeamento do AD',
+  'ldap.sync': 'Sincronizou com o AD',
 };
 
 const GROUPS = [

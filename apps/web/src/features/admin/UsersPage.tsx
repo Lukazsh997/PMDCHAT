@@ -116,6 +116,14 @@ export function UsersPage() {
                       <span className="block text-xs text-muted">
                         {u.username}
                         {u.kind === 'guest' && ', convidado'}
+                        {u.authSource === 'ldap' && (
+                          <span
+                            title="Conta do Active Directory: entra com a senha da rede"
+                            className="ml-1.5 rounded bg-line/60 px-1 py-px text-[10px] font-semibold text-muted"
+                          >
+                            AD
+                          </span>
+                        )}
                       </span>
                     </span>
                   </button>

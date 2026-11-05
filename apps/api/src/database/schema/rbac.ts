@@ -38,6 +38,8 @@ export const roleAssignments = pgTable(
       .references(() => roles.key, { onDelete: 'restrict', onUpdate: 'cascade' }),
     orgUnitId: uuid().references(() => orgUnits.id, { onDelete: 'cascade' }),
     createdBy: uuid().references(() => users.id, { onDelete: 'set null' }),
+    /** manual = atribuída no painel; ldap = vem de um grupo do AD (a sincronização mantém). */
+    source: varchar({ length: 16 }).notNull().default('manual'),
     createdAt: createdAt(),
   },
   (t) => [

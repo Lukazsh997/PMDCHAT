@@ -98,6 +98,36 @@ botão **Instalar** quando o Chrome oferece; também pelo menu ⋮ → _Transmit
 compartilhar → Instalar página como app_. Para instalar em todas as estações, use a política
 `WebAppInstallForceList` do Chrome com o endereço do sistema.
 
+## Active Directory
+
+Configurado no painel, em **Administração → Active Directory** (só o super administrador). Antes:
+
+1. **Conta de serviço só de leitura** no AD (ex.: `svc-chat`), com senha que não expira. Ela não
+   precisa de nenhuma permissão além da leitura padrão de usuários, grupos e OUs.
+2. **Conexão protegida:** use `ldaps://servidor:636` (recomendado) ou `ldap://servidor:389` com
+   StartTLS ligado. Sem uma das duas, a senha das pessoas trafega aberta na rede.
+3. **Certificado:** se o AD usa um certificado da AC interna da organização, cole o certificado da
+   AC (PEM, "Base-64") em _Opções avançadas_. Exporte em `certlm.msc` → _Autoridades de
+   Certificação Raiz Confiáveis_ → certificado da AC → _Exportar_ → _X.509 codificado em Base-64_.
+4. **Rede:** a VM precisa alcançar o controlador de domínio na porta 636 (ou 389). Teste com
+   `docker compose exec api node -e "require('net').connect(636,'ad.orgao.local').on('connect',()=>{console.log('ok');process.exit()})"`.
+
+No painel, siga as quatro etapas na ordem: **Conexão** (preencha, _Testar conexão_ e _Salvar_),
+**OUs → unidades** (o botão _Ligar pelo nome_ sugere pela sigla/nome), **Grupos → papéis** e
+**Sincronização** (_Ver o que muda_ mostra a prévia sem gravar nada; depois _Sincronizar agora_).
+A partir daí a sincronização roda sozinha no intervalo configurado (padrão: 60 min).
+
+- As pessoas entram com o login da rede: `joao`, `ORGAO\joao` ou `joao@orgao.local`.
+- O super administrador local continua entrando com a senha própria. Mantenha-o como acesso de
+  emergência para quando o AD estiver fora do ar.
+- Uma conta local com o mesmo login de alguém do AD passa a ser do AD (a senha local deixa de valer).
+- Se a sincronização fosse desativar muita gente de uma vez (mais de 30%), ela para e pede
+  confirmação no painel — geralmente é sinal de base de busca ou filtro errados.
+
+**Problemas comuns:** "O AD recusou a conta de serviço" → DN ou senha da conta de serviço; "self
+signed certificate" ou "unable to verify" → falta o certificado da AC; "ECONNREFUSED"/"timeout" →
+porta bloqueada entre a VM e o AD; a busca encontra 0 pessoas → base de busca ou filtro.
+
 ## Operação
 
 | Tarefa                       | Comando                                                               |
