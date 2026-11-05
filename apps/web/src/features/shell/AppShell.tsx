@@ -1,7 +1,7 @@
 import { LogOut, MessagesSquare, Network, Shield, UserRound, WifiOff } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router';
-import { Avatar } from '@/components/ui';
+import { NavLink, Outlet, useLocation } from 'react-router';
+import { Avatar, ErrorBoundary } from '@/components/ui';
 import { APP_NAME } from '@/lib/config';
 import { connectionStore } from '@/lib/socket';
 import { useLogout, useMe } from '../auth/auth-api';
@@ -14,6 +14,7 @@ import { useRealtimeSync } from '../chat/useRealtimeSync';
  */
 export function AppShell() {
   const me = useMe();
+  const { pathname } = useLocation();
   const logout = useLogout();
   const user = me.data?.user;
   useRealtimeSync(user?.id);
@@ -69,7 +70,9 @@ export function AppShell() {
           </button>
         </nav>
         <div className="min-w-0 flex-1 overflow-hidden">
-          <Outlet />
+          <ErrorBoundary resetKey={pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@ import { FileText, Megaphone, Paperclip, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Alert, Button, Dialog, toast } from '@/components/ui';
 import { ApiRequestError, uploadFile } from '@/lib/api';
-import { formatBytes } from '@/lib/format';
+import { formatBytes, newClientId } from '@/lib/format';
 import { type TreeNode, useBroadcastPreview, useSendBroadcast } from './org-api';
 
 interface Pending {
@@ -30,7 +30,7 @@ export function BroadcastDialog({
   const [includeSubunits, setIncludeSubunits] = useState(true);
   const [pending, setPending] = useState<Pending[]>([]);
   const [confirming, setConfirming] = useState(false);
-  const [clientId, setClientId] = useState(() => crypto.randomUUID());
+  const [clientId, setClientId] = useState(newClientId);
   const fileInput = useRef<HTMLInputElement>(null);
   const hasChildren = node.children.length > 0;
   const preview = useBroadcastPreview(node.id, includeSubunits && hasChildren, open);
@@ -49,7 +49,7 @@ export function BroadcastDialog({
     setBody('');
     setPending([]);
     setConfirming(false);
-    setClientId(crypto.randomUUID());
+    setClientId(newClientId());
     send.reset();
   }
 

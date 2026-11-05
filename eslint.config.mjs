@@ -52,6 +52,22 @@ export default tseslint.config(
     files: ['apps/web/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
     plugins: { 'react-hooks': reactHooks },
-    rules: reactHooks.configs.recommended.rules,
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      // A VM é acessada por HTTP (sem certificado): essas APIs não existem nesse contexto.
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'crypto',
+          property: 'randomUUID',
+          message: 'Indisponível em HTTP. Use newClientId() de @/lib/format.',
+        },
+        {
+          object: 'crypto',
+          property: 'subtle',
+          message: 'Indisponível em HTTP (fora de localhost).',
+        },
+      ],
+    },
   },
 );

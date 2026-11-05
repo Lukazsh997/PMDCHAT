@@ -8,3 +8,4 @@ export { Select } from './Select';
 export { Spinner } from './Spinner';
 export { TextField, type TextFieldProps } from './TextField';
 export { toast, Toaster } from './Toast';
+export { ErrorBoundary } from './ErrorBoundary';
