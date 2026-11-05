@@ -1,4 +1,4 @@
-import { type ConversationDetail, MESSAGE_RULES } from '@plataforma/contracts';
+import { type ConversationDetail, MESSAGE_RULES, REACTION_EMOJIS } from '@plataforma/contracts';
 import {
   AlertCircle,
   ArrowDown,
@@ -8,6 +8,7 @@ import {
   Megaphone,
   MoreHorizontal,
   Pencil,
+  SmilePlus,
   Trash2,
 } from 'lucide-react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -25,19 +26,32 @@ export interface MessageActions {
   onEdit: (m: ChatMessage) => void;
   onDelete: (m: ChatMessage) => void;
   onRetry: (m: ChatMessage) => void;
+  onReact: (m: ChatMessage, emoji: string, on: boolean) => void;
 }
 
 export function MessageList({
   items,
   hasMore,
+  hasNewer = false,
   loadOlder,
+  loadNewer,
+  onJumpLatest,
+  focusId,
+  onFocused,
   detail,
   meId,
   actions,
 }: {
   items: ChatMessage[];
   hasMore: boolean;
+  /** Aberta no meio da conversa: há mensagens mais novas a carregar. */
+  hasNewer?: boolean;
   loadOlder: () => Promise<void>;
+  loadNewer?: () => Promise<void>;
+  onJumpLatest?: () => void;
+  /** Mensagem a mostrar e destacar (vinda da busca). */
+  focusId?: string | null;
+  onFocused?: () => void;
   detail: ConversationDetail | undefined;
   meId: string;
   actions: MessageActions;
@@ -46,12 +60,20 @@ export function MessageList({
   const now = useNow();
   const [atBottom, setAtBottom] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingNewer = useRef(false);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  useEffect(() => {
+    if (!highlight) return;
+    const t = window.setTimeout(() => setHighlight(null), 2600);
+    return () => window.clearTimeout(t);
+  }, [highlight]);
   const prevHeight = useRef<number | null>(null);
   const content = useRef<HTMLOListElement>(null);
   const stick = useRef(true);
   const lastId = items.at(-1)?.id;
 
   const nameOf = (id: string) => detail?.members.find((m) => m.id === id)?.displayName ?? 'Alguém';
+  const people: PeopleIndex = { meId, nameOf };
   const isGroup = detail?.type === 'group';
   const others = detail?.members.filter((m) => m.id !== meId) ?? [];
   const readByAll = (seq: number) => others.length > 0 && others.every((m) => m.lastReadSeq >= seq);
@@ -66,6 +88,7 @@ export function MessageList({
       return;
     }
     const mine = items.at(-1)?.senderId === meId;
+    if (focusId) return;
     if (stick.current || mine) {
       stick.current = true;
       el.scrollTop = el.scrollHeight;
@@ -73,24 +96,41 @@ export function MessageList({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só quando muda a última mensagem
   }, [lastId]);
 
+  // Leva até a mensagem procurada e a destaca.
+  useLayoutEffect(() => {
+    if (!focusId) return;
+    const row = content.current?.querySelector<HTMLElement>(`[data-message-id="${focusId}"]`);
+    if (!row) return;
+    stick.current = false;
+    row.scrollIntoView({ block: 'center' });
+    setHighlight(focusId);
+    onFocused?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reage à mensagem procurada e ao que foi carregado
+  }, [focusId, items.length]);
+
   // Imagens e anexos mudam a altura depois de carregar: quem estava no fim continua no fim.
   useEffect(() => {
     const el = scroller.current;
     if (!el || !content.current) return;
-    el.scrollTop = el.scrollHeight;
+    if (!focusId) el.scrollTop = el.scrollHeight;
     const ro = new ResizeObserver(() => {
       if (stick.current && prevHeight.current === null) el.scrollTop = el.scrollHeight;
     });
     ro.observe(content.current);
     return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só na montagem: começa no fim, salvo se veio procurar uma mensagem
   }, []);
 
   async function onScroll() {
     const el = scroller.current;
     if (!el) return;
     const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    stick.current = bottom;
-    setAtBottom(bottom);
+    stick.current = bottom && !hasNewer;
+    setAtBottom(bottom && !hasNewer);
+    if (bottom && hasNewer && loadNewer && !loadingNewer.current) {
+      loadingNewer.current = true;
+      await loadNewer().finally(() => (loadingNewer.current = false));
+    }
     if (el.scrollTop < 200 && hasMore && !loadingOlder) {
       setLoadingOlder(true);
       prevHeight.current = el.scrollHeight;
@@ -153,6 +193,8 @@ export function MessageList({
                     read={readByAll(m.seq)}
                     actions={actions}
                     now={now}
+                    people={people}
+                    highlight={highlight === m.id}
                   />
                 )}
               </Fragment>
@@ -164,7 +206,12 @@ export function MessageList({
         <button
           type="button"
           onClick={() =>
-            scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' })
+            hasNewer && onJumpLatest
+              ? onJumpLatest()
+              : scroller.current?.scrollTo({
+                  top: scroller.current.scrollHeight,
+                  behavior: 'smooth',
+                })
           }
           className="absolute right-5 bottom-4 flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-md hover:bg-paper"
           aria-label="Ir para as mensagens mais recentes"
@@ -176,6 +223,12 @@ export function MessageList({
   );
 }
 
+/** Quem é quem na conversa: para os nomes nas reações. */
+export interface PeopleIndex {
+  meId: string;
+  nameOf: (id: string) => string;
+}
+
 function Bubble({
   m,
   mine,
@@ -185,6 +238,8 @@ function Bubble({
   read,
   actions,
   now,
+  people,
+  highlight = false,
 }: {
   now: number;
   m: ChatMessage;
@@ -194,6 +249,9 @@ function Bubble({
   continued: boolean;
   read: boolean;
   actions: MessageActions;
+  people: PeopleIndex;
+  /** Mensagem aberta pela busca. */
+  highlight?: boolean;
 }) {
   const deleted = !!m.deletedAt;
   // Só quem enviou, e só nos primeiros minutos (contados pelo relógio do servidor).
@@ -201,6 +259,7 @@ function Bubble({
   const own = mine && !deleted && !m.status && m.type === 'text';
   const editable = own && age < MESSAGE_RULES.editWindowMinutes * 60_000;
   const canDelete = own && age < MESSAGE_RULES.deleteWindowMinutes * 60_000;
+  const interactive = !deleted && !m.status && m.type === 'text';
   const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
   const menu = [
     ...(editable
@@ -223,10 +282,15 @@ function Bubble({
         ]
       : []),
   ];
+  const myReactions = new Set(
+    m.reactions.filter((r) => r.userIds.includes(people.meId)).map((r) => r.emoji),
+  );
+  const toolButton = 'rounded-full p-1 text-muted hover:bg-line/60 hover:text-ink';
 
   return (
     <li
-      className={`msg-row group flex ${mine ? 'justify-end' : 'justify-start'} ${continued ? 'mt-0.5' : 'mt-2.5'}`}
+      data-message-id={m.id}
+      className={`msg-row group flex flex-col ${mine ? 'items-end' : 'items-start'} ${continued ? 'mt-0.5' : 'mt-2.5'} ${highlight ? 'msg-focus' : ''}`}
     >
       <div
         className={`flex max-w-[min(80%,42rem)] items-start gap-1 ${mine ? 'flex-row-reverse' : ''}`}
@@ -264,31 +328,82 @@ function Bubble({
             {mine && !deleted && <Status m={m} read={read} />}
           </p>
         </div>
-        {menu.length > 0 && (
-          <div className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+        {interactive && (
+          <div className="flex items-center opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
             <Menu
-              label="Ações da mensagem"
+              label="Reagir"
+              layout="row"
               align={mine ? 'right' : 'left'}
-              items={menu}
+              items={REACTION_EMOJIS.map((emoji) => ({
+                label: emoji,
+                onSelect: () => actions.onReact(m, emoji, !myReactions.has(emoji)),
+              }))}
               trigger={(p) => (
                 <button
                   type="button"
                   {...p}
-                  aria-label="Ações da mensagem"
-                  className="rounded-full p-1 text-muted hover:bg-line/60 hover:text-ink"
+                  aria-label="Reagir"
+                  title="Reagir"
+                  className={toolButton}
                 >
-                  <MoreHorizontal size={16} aria-hidden="true" />
+                  <SmilePlus size={16} aria-hidden="true" />
                 </button>
               )}
             />
+            {menu.length > 0 && (
+              <Menu
+                label="Ações da mensagem"
+                align={mine ? 'right' : 'left'}
+                items={menu}
+                trigger={(p) => (
+                  <button
+                    type="button"
+                    {...p}
+                    aria-label="Ações da mensagem"
+                    className={toolButton}
+                  >
+                    <MoreHorizontal size={16} aria-hidden="true" />
+                  </button>
+                )}
+              />
+            )}
           </div>
         )}
       </div>
+      {m.reactions.length > 0 && !deleted && (
+        <ul className="mt-1 flex max-w-[min(80%,42rem)] flex-wrap gap-1" aria-label="Reações">
+          {m.reactions.map((r) => {
+            const on = r.userIds.includes(people.meId);
+            const who = r.userIds
+              .map((u) => (u === people.meId ? 'Você' : people.nameOf(u).split(' ')[0]))
+              .join(', ');
+            return (
+              <li key={r.emoji}>
+                <button
+                  type="button"
+                  onClick={() => actions.onReact(m, r.emoji, !on)}
+                  title={who}
+                  aria-label={`${r.emoji} ${r.userIds.length}: ${who}${on ? '. Clique para tirar a sua reação' : ''}`}
+                  aria-pressed={on}
+                  className={`flex h-6 items-center gap-1 rounded-full border px-2 text-xs ${
+                    on
+                      ? 'border-primary bg-primary-soft font-semibold text-primary'
+                      : 'border-line bg-surface text-ink hover:border-muted'
+                  }`}
+                >
+                  <span aria-hidden="true">{r.emoji}</span>
+                  <span>{r.userIds.length}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {m.status === 'failed' && (
         <button
           type="button"
           onClick={() => actions.onRetry(m)}
-          className="ml-2 self-center text-xs font-semibold text-danger hover:underline"
+          className="mt-1 text-xs font-semibold text-danger hover:underline"
         >
           Não enviada. Tentar de novo
         </button>

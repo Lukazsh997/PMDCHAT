@@ -25,3 +25,10 @@ resposta, por exemplo). Os anexos são gravados uma vez e ligados a todas as men
 junta todos sem repetir ninguém. Qualquer pessoa pode mandar para até 50 pessoas escolhidas uma
 a uma, o que equivale a mandar mensagens individuais. Escolher setores inteiros continua
 exigindo `broadcast.send`. O balão mostra para quem foi ("DCA e 3 pessoas") sem revelar os nomes.
+
+**Atualização (05/11/2026, fim da tarde).** Todos os setores aparecem na busca de destinatários
+para qualquer pessoa. A permissão `broadcast.send` deixa de bloquear a escolha do setor e passa a
+definir o tamanho do envio. Com a permissão sobre todos os setores escolhidos, o limite é o geral
+(5.000). Sem ela, o envio inteiro (setores e pessoas) alcança no máximo 50 pessoas, o mesmo que
+mandar mensagens individuais. Antes, quem não tinha a permissão simplesmente não via o setor na
+busca, sem explicação.

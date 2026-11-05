@@ -1,11 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type {
-  ConversationDetail,
-  ConversationMember,
-  ConversationSummary,
-  MemberRole,
-  MessagePreview,
-  SystemEvent,
+import {
+  type ConversationDetail,
+  type ConversationMember,
+  type ConversationSummary,
+  effectiveNotificationLevel,
+  type MemberRole,
+  type MessagePreview,
+  type NotificationLevel,
+  type SystemEvent,
 } from '@plataforma/contracts';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { AppException } from '../../common/app-exception.js';
@@ -35,8 +37,14 @@ interface SummaryRow extends Record<string, unknown> {
   role: MemberRole;
   last_read_seq: string;
   muted_until: Date | null;
+  notification_level: NotificationLevel | null;
   member_count: string;
   unread_count: string;
+  is_channel: boolean;
+  include_subunits: boolean;
+  ou_id: string | null;
+  ou_name: string | null;
+  ou_acronym: string | null;
   peer_id: string | null;
   lm_id: string | null;
   lm_seq: string | null;
@@ -70,7 +78,8 @@ export class ConversationsService {
       : sql``;
     const rows = (await this.db.execute(sql`
       select c.id, c.type, c.name, c.description, c.last_seq, c.last_message_at,
-             m.role, m.last_read_seq, m.muted_until,
+             c.is_channel, c.include_subunits, ou.id as ou_id, ou.name as ou_name, ou.acronym as ou_acronym,
+             m.role, m.last_read_seq, m.muted_until, m.notification_level,
              (select count(*) from conversation_members x where x.conversation_id = c.id) as member_count,
              (select count(*) from messages x
                where x.conversation_id = c.id and x.seq > greatest(m.last_read_seq, m.joined_seq)
@@ -85,6 +94,7 @@ export class ConversationsService {
                 join files f on f.id = a.file_id where a.message_id = lm.id) as lm_attachments
         from conversation_members m
         join conversations c on c.id = m.conversation_id
+        left join org_units ou on ou.id = c.org_unit_id
         left join lateral (
           select * from messages x where x.conversation_id = c.id and x.seq > m.joined_seq
           order by x.seq desc limit 1
@@ -126,12 +136,25 @@ export class ConversationsService {
         title: r.type === 'group' ? (r.name ?? 'Grupo') : (peer?.displayName ?? 'Conversa'),
         description: r.description,
         peer,
+        channel: r.is_channel
+          ? {
+              orgUnit: r.ou_id ? { id: r.ou_id, name: r.ou_name!, acronym: r.ou_acronym } : null,
+              includeSubunits: r.include_subunits,
+            }
+          : null,
         memberCount: Number(r.member_count),
         myRole: r.role,
         lastSeq: Number(r.last_seq),
         lastReadSeq: Number(r.last_read_seq),
         unreadCount: Number(r.unread_count),
         mutedUntil: r.muted_until ? new Date(r.muted_until).toISOString() : null,
+        notificationSetting: r.notification_level,
+        notificationLevel: effectiveNotificationLevel({
+          notificationSetting: r.notification_level,
+          type: r.type,
+          memberCount: Number(r.member_count),
+          isChannel: r.is_channel,
+        }),
         lastMessage,
         lastMessageAt: new Date(r.last_message_at).toISOString(),
       };
@@ -158,7 +181,12 @@ export class ConversationsService {
     const order: Record<MemberRole, number> = { owner: 0, admin: 1, member: 2 };
     const members: ConversationMember[] = rows
       .filter((r) => people.has(r.userId))
-      .map((r) => ({ ...people.get(r.userId)!, role: r.role, lastReadSeq: r.lastReadSeq }))
+      .map((r) => ({
+        ...people.get(r.userId)!,
+        role: r.role,
+        lastReadSeq: r.lastReadSeq,
+        autoJoined: r.autoJoined,
+      }))
       .sort(
         (a, b) =>
           order[a.role] - order[b.role] || a.displayName.localeCompare(b.displayName, 'pt-BR'),
@@ -290,16 +318,17 @@ export class ConversationsService {
 
     const sys = await this.db.transaction(async (tx) => {
       const [conv] = await tx
-        .select({ lastSeq: conversations.lastSeq })
+        .select({ lastSeq: conversations.lastSeq, isChannel: conversations.isChannel })
         .from(conversations)
         .where(eq(conversations.id, id))
         .for('update');
-      // Quem entra agora vê a partir daqui, não o histórico anterior.
+      // Quem entra num grupo vê a partir daqui; num canal, os avisos anteriores também.
+      const from = conv!.isChannel ? 0 : conv!.lastSeq;
       await tx.insert(conversationMembers).values(
         toAdd.map((userId) => ({
           conversationId: id,
           userId,
-          joinedSeq: conv!.lastSeq,
+          joinedSeq: from,
           lastReadSeq: conv!.lastSeq,
         })),
       );
@@ -336,6 +365,15 @@ export class ConversationsService {
         and(eq(conversationMembers.conversationId, id), eq(conversationMembers.userId, userId)),
       );
     if (!target) throw new AppException(404, 'NOT_FOUND', 'Esta pessoa não está no grupo.');
+    if (target.autoJoined) {
+      throw new AppException(
+        409,
+        'CONFLICT',
+        leaving
+          ? 'Você está neste canal pela sua lotação. Se preferir, silencie o canal.'
+          : 'Esta pessoa está no canal pela lotação: ela sai sozinha se mudar de unidade.',
+      );
+    }
     if (!leaving) {
       if (me.member.role === 'member')
         throw forbidden('Somente administradores do grupo podem remover pessoas.');
@@ -399,15 +437,26 @@ export class ConversationsService {
     return this.detail(auth.user.id, id);
   }
 
-  async setMuted(
+  /** Preferências da pessoa nesta conversa: silenciar até uma data e nível de aviso. */
+  async updateMySettings(
     userId: string,
     id: string,
-    mutedUntil: string | null,
+    input: { mutedUntil?: string | null; notificationLevel?: NotificationLevel | null },
   ): Promise<ConversationSummary> {
     await this.requireMember(userId, id);
+    if (input.mutedUntil === undefined && input.notificationLevel === undefined) {
+      return this.summary(userId, id);
+    }
     await this.db
       .update(conversationMembers)
-      .set({ mutedUntil: mutedUntil ? new Date(mutedUntil) : null })
+      .set({
+        ...(input.mutedUntil !== undefined
+          ? { mutedUntil: input.mutedUntil ? new Date(input.mutedUntil) : null }
+          : {}),
+        ...(input.notificationLevel !== undefined
+          ? { notificationLevel: input.notificationLevel }
+          : {}),
+      })
       .where(
         and(eq(conversationMembers.conversationId, id), eq(conversationMembers.userId, userId)),
       );
@@ -516,12 +565,18 @@ export class ConversationsService {
           : (peer?.displayName ?? 'Conversa'),
       description: conversation.description,
       peer,
+      channel: null,
       memberCount: others.length + 1,
       myRole: member.role,
       lastSeq: conversation.lastSeq,
       lastReadSeq: member.lastReadSeq,
       unreadCount: 0,
       mutedUntil: member.mutedUntil?.toISOString() ?? null,
+      // 'mentions' é valor antigo do banco (a migração 0011 converte para 'none').
+      notificationSetting:
+        member.notificationLevel === 'mentions' ? 'none' : member.notificationLevel,
+      notificationLevel:
+        member.notificationLevel === 'mentions' ? 'none' : (member.notificationLevel ?? 'all'),
       lastMessage: null,
       lastMessageAt: conversation.lastMessageAt.toISOString(),
     };

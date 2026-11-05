@@ -64,12 +64,10 @@ function ComposerBody({ onDone, initialUnit }: { onDone: () => void; initialUnit
   const fileInput = useRef<HTMLInputElement>(null);
   const send = useSendBroadcast();
 
-  // Setores que esta pessoa pode escolher (quem não tem a permissão escolhe só pessoas).
-  const allowed = useMemo(
-    () => [...(tree.model?.byId.values() ?? [])].filter((n) => canBroadcastTo(scopes.data, n)),
-    [tree.model, scopes.data],
-  );
-  const limitedToPeople = !!scopes.data && !scopes.data.global && !scopes.data.unitIds.length;
+  // Todos os setores aparecem. Sem a permissão de comunicado sobre o setor, o envio
+  // vale como mensagens individuais e fica limitado (o servidor confere).
+  const allUnits = useMemo(() => [...(tree.model?.byId.values() ?? [])], [tree.model]);
+  const hasPermission = !!scopes.data && (scopes.data.global || scopes.data.unitIds.length > 0);
 
   const targets = useMemo(
     () => ({
@@ -82,16 +80,20 @@ function ComposerBody({ onDone, initialUnit }: { onDone: () => void; initialUnit
     [units, people],
   );
   const hasTargets = units.length > 0 || people.length > 0;
-  // Só pessoas: a conta é local. Com setores, o servidor soma sem repetir ninguém.
+  // Só pessoas: a conta é local. Com setores, o servidor soma sem repetir ninguém
+  // e diz se vale o limite de quem não tem a permissão sobre algum setor escolhido.
   const preview = useBroadcastPreview(targets, units.length > 0);
   const count = units.length ? preview.data?.recipientCount : people.length;
-
-  const tooManyPeople =
-    limitedToPeople && people.length > BROADCAST_RULES.maxPeopleWithoutPermission;
+  const limit = units.length
+    ? (preview.data?.limit ?? null)
+    : hasPermission
+      ? null
+      : BROADCAST_RULES.maxPeopleWithoutPermission;
+  const overLimit = limit !== null && count !== undefined && count > limit;
   const canSend =
     hasTargets &&
     !!count &&
-    !tooManyPeople &&
+    !overLimit &&
     !uploads.uploading &&
     !uploads.failed &&
     (text.trim().length > 0 || uploads.ready.length > 0) &&
@@ -127,17 +129,17 @@ function ComposerBody({ onDone, initialUnit }: { onDone: () => void; initialUnit
   }
 
   const unitResults = (q: string) => {
-    if (!allowed.length) return null;
+    if (!allUnits.length) return null;
     const term = normalize(q);
     const list = (
       term
-        ? allowed.filter(
+        ? allUnits.filter(
             (n) => normalize(n.name).includes(term) || normalize(n.acronym ?? '').includes(term),
           )
-        : allowed.filter((n) => n.depth <= 1)
+        : allUnits.filter((n) => n.depth <= 1)
     )
       .sort((a, b) => a.depth - b.depth || a.name.localeCompare(b.name, 'pt-BR'))
-      .slice(0, term ? 8 : 6);
+      .slice(0, term ? 12 : 6);
     if (!list.length) return null;
     return (
       <>
@@ -146,6 +148,7 @@ function ComposerBody({ onDone, initialUnit }: { onDone: () => void; initialUnit
         </li>
         {list.map((n) => {
           const on = units.some((u) => u.node.id === n.id);
+          const full = canBroadcastTo(scopes.data, n);
           return (
             <li key={n.id}>
               <button
@@ -169,6 +172,12 @@ function ComposerBody({ onDone, initialUnit }: { onDone: () => void; initialUnit
                     {n.ancestors.length
                       ? ` · ${n.ancestors.map((a) => a.acronym || a.name).join(' › ')}`
                       : ''}
+                    {!full && n.totalMembers > BROADCAST_RULES.maxPeopleWithoutPermission && (
+                      <span className="text-danger">
+                        {' '}
+                        · acima do seu limite de {BROADCAST_RULES.maxPeopleWithoutPermission}
+                      </span>
+                    )}
                   </span>
                 </span>
                 <span
@@ -262,14 +271,15 @@ function ComposerBody({ onDone, initialUnit }: { onDone: () => void; initialUnit
           autoFocus={!initialUnit}
           selected={people}
           onToggle={togglePerson}
-          placeholder={allowed.length ? 'Buscar pessoa ou setor' : 'Buscar pessoa'}
+          placeholder="Buscar pessoa ou setor"
           extra={unitResults}
           listClassName="max-h-52"
         />
-        {limitedToPeople && (
-          <p className={`mt-1 text-xs ${tooManyPeople ? 'text-danger' : 'text-muted'}`}>
-            Você pode escolher até {BROADCAST_RULES.maxPeopleWithoutPermission} pessoas. Para enviar
-            a setores inteiros, peça o papel de Comunicador ao administrador.
+        {limit !== null && (
+          <p className={`mt-1 text-xs ${overLimit ? 'font-semibold text-danger' : 'text-muted'}`}>
+            {overLimit
+              ? `Este envio alcança ${count} pessoas. Sem o papel de Comunicador para ${hasPermission ? 'todos os setores escolhidos' : 'estes setores'}, o limite é ${limit} pessoas. Tire alguns destinatários ou peça o papel ao administrador.`
+              : `Sem o papel de Comunicador para ${hasPermission ? 'algum setor escolhido' : 'setores'}, o envio pode alcançar até ${limit} pessoas.`}
           </p>
         )}
       </section>

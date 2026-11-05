@@ -1,4 +1,4 @@
-import { type AdminUser, ROLES, type UserStatus } from '@plataforma/contracts';
+import type { AdminUser, UserStatus } from '@plataforma/contracts';
 import { Plus, Search } from 'lucide-react';
 import { useDeferredValue, useState } from 'react';
 import { Avatar, Button, Select, Spinner } from '@/components/ui';
@@ -186,7 +186,7 @@ export function RoleBadges({ user }: { user: AdminUser }) {
           key={r.id}
           className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-semibold dark:bg-rail-ink/10"
         >
-          {ROLES[r.role].name}
+          {r.roleName}
           {r.orgUnit ? `: ${r.orgUnit.acronym ?? r.orgUnit.name}` : ''}
         </span>
       ))}

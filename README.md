@@ -6,7 +6,17 @@ pelo Google Chrome e depende só de software livre.
 
 ## O que já está pronto
 
-**Fase 1 — Chat** (esta versão)
+**Fase 2 — Produtividade** (esta versão)
+
+| Área                | Entregue                                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Busca               | Mensagens em português sem acento e por pedaço de palavra, com filtros (conversa, pessoa, período, anexo), pessoas e arquivos; abre a conversa na mensagem (Ctrl+K) |
+| Reações             | 8 emojis, uma reação por pessoa em cada mensagem, em tempo real                                                                                                     |
+| Canais de aviso     | Só administradores publicam; ligados a uma unidade, as pessoas lotadas entram e saem sozinhas                                                                       |
+| Papéis e permissões | Papéis editáveis no painel (criar, ajustar permissões, onde valem), com proteção contra escalada de privilégio                                                      |
+| Avisos e aplicativo | Web Push com a aba fechada, nível de aviso por conversa (todas ou nenhuma) e instalação como aplicativo (PWA)                                                       |
+
+**Fase 1 — Chat**
 
 | Área         | Entregue                                                                                                                                                                                            |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -24,8 +34,8 @@ pelo Google Chrome e depende só de software livre.
 
 **Fase 0 — Fundação:** monorepo, autenticação local, Docker Compose, Nginx, scripts de operação e CI.
 
-Próximas fases: busca completa, menções, respostas em thread e reações (Fase 2); integração com o
-Active Directory (Fase 3); cliente para Windows com notificações nativas (Fase 4).
+Próximas fases: integração com o Active Directory (Fase 3); cliente para Windows com notificações
+nativas (Fase 4).
 
 ## Estrutura
 
@@ -110,3 +120,8 @@ login, anexos e o antivírus através do Nginx.
 10. [Anexos em disco com antivírus](docs/adr/0010-anexos-e-antivirus.md)
 11. [Comunicados em massa como mensagens diretas](docs/adr/0011-comunicados-em-massa.md)
 12. [Exclusão de usuários com anonimização](docs/adr/0012-exclusao-de-usuarios.md)
+13. [Busca no PostgreSQL, sem serviço extra](docs/adr/0013-busca-postgresql.md)
+14. [Reações (threads e menções retiradas)](docs/adr/0014-threads-mencoes-reacoes.md)
+15. [Canais de aviso com membros pela lotação](docs/adr/0015-canais-de-aviso.md)
+16. [Papéis editáveis no banco](docs/adr/0016-papeis-editaveis.md)
+17. [Web Push e PWA](docs/adr/0017-web-push-pwa.md)

@@ -37,7 +37,10 @@ export async function resetState(ctx: TestContext): Promise<void> {
   await ctx.db.execute(sql`
     truncate users, user_credentials, sessions, audit_logs, org_units, role_assignments,
              conversations, conversation_members, messages, message_edits, message_attachments, files,
+             message_reactions, push_subscriptions,
              broadcasts cascade`);
+  // Papéis criados nos testes saem; os de sistema (da migração) ficam.
+  await ctx.db.execute(sql`delete from roles where not is_system`);
   await ctx.redis.flushdb();
 }
 

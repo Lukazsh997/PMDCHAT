@@ -56,19 +56,21 @@ export function useRealtimeSync(meId: string | undefined) {
       const viewing =
         activeConversation.get() === m.conversationId && document.visibilityState === 'visible';
       if (viewing && m.senderId !== meId) markRead(qc, m.conversationId, m.seq);
-      if (m.senderId === meId || m.type !== 'text' || viewing) return;
+      if (m.senderId === meId || m.type !== 'text') return;
+
+      if (viewing) return;
 
       const summary = qc
         .getQueryData<ConversationSummary[]>(keys.list)
         ?.find((c) => c.id === m.conversationId);
       if (summary && isMuted(summary)) return;
+      if (summary?.notificationLevel === 'none') return;
       const who = senderName ?? 'Nova mensagem';
+      const where = summary?.type === 'group' ? ` em ${summary.title}` : '';
       showNotification({
         title: m.broadcast
           ? `Comunicado${senderName ? ` de ${senderName}` : ''} para ${m.broadcast.label}`
-          : summary?.type === 'group'
-            ? `${who} em ${summary.title}`
-            : who,
+          : `${who}${where}`,
         body: m.body || (m.attachments.length ? `📎 ${m.attachments[0]!.name}` : ''),
         tag: m.conversationId,
         onClick: () => void navigate(`/c/${m.conversationId}`),

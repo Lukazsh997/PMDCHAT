@@ -54,6 +54,11 @@ export class PresenceStore {
   }
 }
 
+/** Tem alguma aba conectada agora? (então recebe pelo tempo real, não por push) */
+export async function hasLiveConnection(redis: Redis, userId: string): Promise<boolean> {
+  return (await redis.hlen(socketsKey(userId))) > 0;
+}
+
 /**
  * Pessoas conectadas agora (disponíveis ou ausentes). Confere a chave de estado de
  * cada uma: se uma instância da API caiu, o registro dela expira e não é contado.

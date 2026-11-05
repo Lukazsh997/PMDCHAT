@@ -108,6 +108,20 @@
     content-visibility: auto;
     contain-intrinsic-size: auto 56px;
   }
+  /* Mensagem aberta pela busca: destaque que some sozinho. */
+  .msg-focus {
+    animation: msg-focus 2.4s ease-out;
+    border-radius: 12px;
+  }
+  @keyframes msg-focus {
+    0%,
+    40% {
+      background: color-mix(in srgb, var(--color-accent) 28%, transparent);
+    }
+    100% {
+      background: transparent;
+    }
+  }
   dialog::backdrop {
     background: rgb(10 20 24 / 0.45);
   }

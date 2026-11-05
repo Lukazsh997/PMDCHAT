@@ -1,5 +1,5 @@
 import type { ConversationSummary } from '@plataforma/contracts';
-import { BellOff, Megaphone, MessageSquarePlus, Search, Users } from 'lucide-react';
+import { BellOff, Megaphone, MessageSquarePlus, Radio, Search, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { NavLink } from 'react-router';
 import { Avatar, IconButton, Menu, Spinner } from '@/components/ui';
@@ -18,8 +18,10 @@ export function ConversationList({
   onNewChat,
   onNewGroup,
   onBroadcast,
+  onNewChannel,
   canCreate,
 }: {
+  onNewChannel?: () => void;
   meId: string;
   onNewChat: () => void;
   onNewGroup: () => void;
@@ -63,6 +65,15 @@ export function ConversationList({
                 icon: <Users size={16} aria-hidden="true" />,
                 onSelect: onNewGroup,
               },
+              ...(onNewChannel
+                ? [
+                    {
+                      label: 'Novo canal de aviso',
+                      icon: <Radio size={16} aria-hidden="true" />,
+                      onSelect: onNewChannel,
+                    },
+                  ]
+                : []),
               {
                 label: 'Comunicado para várias pessoas',
                 icon: <Megaphone size={16} aria-hidden="true" />,
@@ -143,6 +154,7 @@ function ConversationItem({ c, meId }: { c: ConversationSummary; meId: string })
         size={44}
         src={c.peer?.avatarUrl}
         group={c.type === 'group'}
+        channel={!!c.channel}
         presence={c.type === 'direct' ? (presence ?? 'offline') : undefined}
       />
       <div className="min-w-0 flex-1">

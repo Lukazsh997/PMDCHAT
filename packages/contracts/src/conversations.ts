@@ -16,12 +16,53 @@ export const MESSAGE_RULES = {
   maxGroupMembers: 1000,
 } as const;
 
+/**
+ * Reações disponíveis (conjunto fixo: leve, sem seletor de emojis completo). Cada pessoa
+ * tem no máximo uma reação por mensagem: escolher outra troca a anterior.
+ */
+export const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '✅', '👀'] as const;
+export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
+
+export interface Reaction {
+  emoji: string;
+  userIds: string[];
+}
+
 export type ConversationType = 'direct' | 'group';
+
+/** Quando avisar sobre uma conversa (o contador de não lidas aparece sempre). */
+export type NotificationLevel = 'all' | 'none';
+export const NOTIFICATION_LEVELS: Record<NotificationLevel, string> = {
+  all: 'Todas as mensagens',
+  none: 'Nenhuma (só o contador de não lidas)',
+};
+/** Grupos maiores que isto não avisam por padrão (evita avalanche), salvo escolha da pessoa. */
+export const LARGE_GROUP_SIZE = 50;
+
+/** Nível que vale: o escolhido, ou o padrão (diretas e canais: todas; grupos grandes: nenhuma). */
+export function effectiveNotificationLevel(c: {
+  notificationSetting: NotificationLevel | null;
+  type: ConversationType;
+  memberCount: number;
+  isChannel: boolean;
+}): NotificationLevel {
+  if (c.notificationSetting) return c.notificationSetting;
+  return c.type === 'group' && !c.isChannel && c.memberCount > LARGE_GROUP_SIZE ? 'none' : 'all';
+}
 export type MemberRole = 'owner' | 'admin' | 'member';
 
 export interface ConversationMember extends DirectoryUser {
   role: MemberRole;
   lastReadSeq: number;
+  /** Canal de unidade: entrou pela lotação (sai sozinho se mudar de unidade). */
+  autoJoined: boolean;
+}
+
+/** Canal de avisos: só administradores publicam. */
+export interface ChannelInfo {
+  /** Unidade cujas pessoas são membros automáticos. */
+  orgUnit: { id: string; name: string; acronym: string | null } | null;
+  includeSubunits: boolean;
 }
 
 export interface MessagePreview {
@@ -42,12 +83,18 @@ export interface ConversationSummary {
   description: string | null;
   /** Conversa direta: a outra pessoa. */
   peer: DirectoryUser | null;
+  /** Preenchido quando o grupo é um canal de avisos. */
+  channel: ChannelInfo | null;
   memberCount: number;
   myRole: MemberRole;
   lastSeq: number;
   lastReadSeq: number;
   unreadCount: number;
   mutedUntil: string | null;
+  /** Escolha da pessoa (null = padrão). */
+  notificationSetting: NotificationLevel | null;
+  /** O que vale de fato. */
+  notificationLevel: NotificationLevel;
   lastMessage: MessagePreview | null;
   lastMessageAt: string;
 }
@@ -60,6 +107,7 @@ export type MessageType = 'text' | 'system';
 
 export type SystemEvent =
   | { event: 'group_created'; actorId: string }
+  | { event: 'channel_created'; actorId: string }
   | { event: 'members_added'; actorId: string; userIds: string[]; names: string[] }
   | { event: 'member_removed'; actorId: string; userId: string; name: string }
   | { event: 'member_left'; actorId: string }
@@ -97,11 +145,15 @@ export interface Message {
   editedAt: string | null;
   deletedAt: string | null;
   broadcast: BroadcastRef | null;
+  reactions: Reaction[];
 }
 
 export interface MessagePage {
   items: Message[];
+  /** Há mensagens mais antigas. */
   hasMore: boolean;
+  /** Há mensagens mais novas (página aberta no meio da conversa, ex.: pela busca). */
+  hasNewer?: boolean;
 }
 
 export const createDirectSchema = z.object({ userId: z.uuid() });
@@ -119,6 +171,34 @@ export const createGroupSchema = z.object({
 });
 export type CreateGroupRequest = z.input<typeof createGroupSchema>;
 
+export const createChannelSchema = z
+  .object({
+    name: z.string().trim().min(2, 'Informe o nome do canal').max(120),
+    description: z
+      .string()
+      .trim()
+      .max(500)
+      .transform((v) => v || null)
+      .nullable()
+      .optional(),
+    /** Unidade cujas pessoas entram automaticamente. */
+    orgUnitId: z.uuid().nullable().default(null),
+    includeSubunits: z.boolean().default(true),
+    /** Pessoas escolhidas uma a uma (além das da unidade). */
+    memberIds: z.array(z.uuid()).max(MESSAGE_RULES.maxGroupMembers).default([]),
+  })
+  .refine((v) => v.orgUnitId || v.memberIds.length, {
+    message: 'Escolha uma unidade ou ao menos uma pessoa',
+    path: ['memberIds'],
+  });
+export type CreateChannelRequest = z.input<typeof createChannelSchema>;
+
+/** Onde a pessoa tem uma permissão (para oferecer só as unidades possíveis). */
+export interface PermissionScopes {
+  global: boolean;
+  unitIds: string[];
+}
+
 export const updateConversationSchema = createGroupSchema
   .pick({ name: true, description: true })
   .partial();
@@ -127,9 +207,12 @@ export const addMembersSchema = z.object({ userIds: z.array(z.uuid()).min(1).max
 
 export const setMemberRoleSchema = z.object({ role: z.enum(['admin', 'member']) });
 
-export const updateMySettingsSchema = z.object({
-  mutedUntil: z.iso.datetime({ offset: true }).nullable(),
-});
+export const updateMySettingsSchema = z
+  .object({
+    mutedUntil: z.iso.datetime({ offset: true }).nullable(),
+    notificationLevel: z.enum(['all', 'none']).nullable(),
+  })
+  .partial();
 
 export const sendMessageSchema = z
   .object({
@@ -152,6 +235,10 @@ export const editMessageSchema = z.object({
     .max(MESSAGE_RULES.maxBodyLength),
 });
 
+export const reactionSchema = z.object({
+  emoji: z.enum(REACTION_EMOJIS as unknown as [ReactionEmoji, ...ReactionEmoji[]]),
+});
+
 export const markReadSchema = z.object({ seq: z.number().int().min(0) });
 
 /* ------------------------------ Comunicados ----------------------------- */
@@ -159,7 +246,10 @@ export const markReadSchema = z.object({ seq: z.number().int().min(0) });
 export const BROADCAST_RULES = {
   /** Teto de destinatários por envio. */
   maxRecipients: 5000,
-  /** Sem a permissão de comunicados, só é possível escolher pessoas, até este número. */
+  /**
+   * Sem a permissão de comunicado sobre os setores escolhidos (ou sem nenhuma), o envio
+   * alcança no máximo este número de pessoas.
+   */
   maxPeopleWithoutPermission: 50,
   maxUnits: 50,
   maxPeople: 500,
@@ -218,4 +308,84 @@ export interface BroadcastScopes {
 
 export interface BroadcastPreview {
   recipientCount: number;
+  /**
+   * Máximo de destinatários deste envio: sem a permissão de comunicado sobre algum
+   * setor escolhido, vale o limite de mensagens individuais. null = sem esse limite.
+   */
+  limit: number | null;
+}
+
+/* --------------------------------- Busca -------------------------------- */
+
+export const searchMessagesSchema = z.object({
+  q: z.string().trim().min(2, 'Digite ao menos 2 letras').max(200),
+  conversationId: z.uuid().optional(),
+  senderId: z.uuid().optional(),
+  /** Período (datas ISO, inclusive). */
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+  /** Só mensagens com anexo. */
+  withFiles: z.enum(['1']).optional(),
+  /** Paginação: mensagens enviadas antes deste instante. */
+  before: z.iso.datetime({ offset: true }).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+export type SearchMessagesQuery = z.input<typeof searchMessagesSchema>;
+
+/** Trecho com os termos encontrados entre os marcadores abaixo (texto puro, nunca HTML). */
+export const SEARCH_MARK = { start: '\u2063[', end: ']\u2063' } as const;
+
+export interface SearchMessageHit {
+  message: Message;
+  conversation: { id: string; type: ConversationType; title: string };
+  senderName: string;
+  snippet: string;
+}
+
+export interface SearchMessagesPage {
+  items: SearchMessageHit[];
+  hasMore: boolean;
+}
+
+export const searchFilesSchema = z.object({
+  q: z.string().trim().min(2).max(200),
+  conversationId: z.uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export interface SearchFileHit {
+  file: Attachment;
+  messageId: string;
+  seq: number;
+  conversation: { id: string; type: ConversationType; title: string };
+  senderName: string;
+  createdAt: string;
+}
+
+/* ------------------------------ Web Push ------------------------------- */
+
+export interface PushConfig {
+  /** Desligado na instalação (PUSH_ENABLED=false). */
+  enabled: boolean;
+  /** Chave pública VAPID para o navegador assinar. */
+  publicKey: string | null;
+}
+
+export const pushSubscriptionSchema = z.object({
+  endpoint: z.url({ protocol: /^https$/ }).max(2000),
+  keys: z.object({
+    p256dh: z.string().min(16).max(255),
+    auth: z.string().min(8).max(255),
+  }),
+});
+export type PushSubscriptionRequest = z.infer<typeof pushSubscriptionSchema>;
+
+/** O que o service worker recebe para mostrar a notificação. */
+export interface PushPayload {
+  title: string;
+  body: string;
+  /** Caminho a abrir no clique (ex.: /c/<id>). */
+  url: string;
+  /** Agrupa: uma notificação por conversa, substituída pela mais nova. */
+  tag: string;
 }

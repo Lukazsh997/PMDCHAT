@@ -9,9 +9,11 @@ import {
   Post,
   Put,
   Query,
+  Req,
 } from '@nestjs/common';
 import {
   addMembersSchema,
+  createChannelSchema,
   type ConversationDetail,
   type ConversationSummary,
   createDirectSchema,
@@ -20,22 +22,32 @@ import {
   markReadSchema,
   type Message,
   type MessagePage,
+  reactionSchema,
+  type SearchFileHit,
+  searchFilesSchema,
+  type SearchMessagesPage,
+  searchMessagesSchema,
   sendMessageSchema,
   setMemberRoleSchema,
   updateConversationSchema,
   updateMySettingsSchema,
 } from '@plataforma/contracts';
+import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { CurrentAuth } from '../../common/request-context.js';
 import { ZodPipe } from '../../common/zod.pipe.js';
 import type { AuthContext } from '../auth/index.js';
+import { PermissionService, requestGrants } from '../rbac/index.js';
 import { ConversationsService } from './conversations.service.js';
+import { ChannelsService } from './channels.service.js';
 import { MessagesService } from './messages.service.js';
+import { SearchService } from './search.service.js';
 
 const id = new ZodPipe(z.uuid());
 const pageQuery = z.object({
   before: z.coerce.number().int().min(0).optional(),
   after: z.coerce.number().int().min(0).optional(),
+  around: z.coerce.number().int().min(0).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
@@ -44,6 +56,9 @@ export class ConversationsController {
   constructor(
     private readonly conversations: ConversationsService,
     private readonly messages: MessagesService,
+    private readonly permissions: PermissionService,
+    private readonly search: SearchService,
+    private readonly channels: ChannelsService,
   ) {}
 
   @Get('conversations')
@@ -119,9 +134,9 @@ export class ConversationsController {
   settings(
     @CurrentAuth() auth: AuthContext,
     @Param('id', id) cid: string,
-    @Body(new ZodPipe(updateMySettingsSchema)) b: { mutedUntil: string | null },
+    @Body(new ZodPipe(updateMySettingsSchema)) b: z.output<typeof updateMySettingsSchema>,
   ): Promise<ConversationSummary> {
-    return this.conversations.setMuted(auth.user.id, cid, b.mutedUntil);
+    return this.conversations.updateMySettings(auth.user.id, cid, b);
   }
 
   @Post('conversations/:id/read')
@@ -144,7 +159,7 @@ export class ConversationsController {
   }
 
   @Post('conversations/:id/messages')
-  send(
+  async send(
     @CurrentAuth() auth: AuthContext,
     @Param('id', id) cid: string,
     @Body(new ZodPipe(sendMessageSchema)) b: z.output<typeof sendMessageSchema>,
@@ -152,11 +167,54 @@ export class ConversationsController {
     return this.messages.send(auth, cid, b);
   }
 
-  @Patch('messages/:id')
-  edit(
+  @Put('messages/:id/reactions')
+  react(
     @CurrentAuth() auth: AuthContext,
     @Param('id', id) mid: string,
-    @Body(new ZodPipe(editMessageSchema)) b: { body: string },
+    @Body(new ZodPipe(reactionSchema)) b: { emoji: string },
+  ): Promise<Message> {
+    return this.messages.react(auth, mid, b.emoji, true);
+  }
+
+  @Delete('messages/:id/reactions')
+  unreact(
+    @CurrentAuth() auth: AuthContext,
+    @Param('id', id) mid: string,
+    @Body(new ZodPipe(reactionSchema)) b: { emoji: string },
+  ): Promise<Message> {
+    return this.messages.react(auth, mid, b.emoji, false);
+  }
+
+  @Post('conversations/channel')
+  async createChannel(
+    @CurrentAuth() auth: AuthContext,
+    @Body(new ZodPipe(createChannelSchema)) b: z.output<typeof createChannelSchema>,
+    @Req() req: FastifyRequest,
+  ): Promise<ConversationSummary> {
+    return this.channels.create(auth, await requestGrants(req, this.permissions), b);
+  }
+
+  @Get('search/messages')
+  searchMessages(
+    @CurrentAuth() auth: AuthContext,
+    @Query(new ZodPipe(searchMessagesSchema)) q: z.output<typeof searchMessagesSchema>,
+  ): Promise<SearchMessagesPage> {
+    return this.search.searchMessages(auth.user.id, q);
+  }
+
+  @Get('search/files')
+  searchFiles(
+    @CurrentAuth() auth: AuthContext,
+    @Query(new ZodPipe(searchFilesSchema)) q: z.output<typeof searchFilesSchema>,
+  ): Promise<SearchFileHit[]> {
+    return this.search.searchFiles(auth.user.id, q);
+  }
+
+  @Patch('messages/:id')
+  async edit(
+    @CurrentAuth() auth: AuthContext,
+    @Param('id', id) mid: string,
+    @Body(new ZodPipe(editMessageSchema)) b: z.output<typeof editMessageSchema>,
   ): Promise<Message> {
     return this.messages.edit(auth, mid, b.body);
   }

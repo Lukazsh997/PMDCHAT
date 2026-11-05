@@ -5,8 +5,9 @@ import {
   type Message,
   MESSAGE_RULES,
   type MessagePage,
+  type Reaction,
 } from '@plataforma/contracts';
-import { and, asc, desc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { AppException } from '../../common/app-exception.js';
 import { DomainEvents } from '../../common/events/domain-events.js';
 import { DB, type Database } from '../../database/database.js';
@@ -17,12 +18,14 @@ import {
   files,
   messageAttachments,
   messageEdits,
+  messageReactions,
   type MessageRow,
   messages,
 } from '../../database/schema/index.js';
 import { AuditService } from '../audit/index.js';
 import type { AuthContext } from '../auth/index.js';
 import { toUploaded } from '../files/index.js';
+import { ChannelsService } from './channels.service.js';
 import { ConversationsService } from './conversations.service.js';
 import { toMessage } from './message-mapper.js';
 
@@ -39,11 +42,37 @@ export class MessagesService {
   async list(
     userId: string,
     conversationId: string,
-    q: { before?: number; after?: number; limit: number },
+    q: { before?: number; after?: number; around?: number; limit: number },
   ): Promise<MessagePage> {
     const { member } = await this.conversations.requireMember(userId, conversationId);
     const base = [eq(messages.conversationId, conversationId), gt(messages.seq, member.joinedSeq)];
     let rows: MessageRow[];
+    if (q.around !== undefined) {
+      // Abre a conversa no meio: metade antes da mensagem procurada, metade a partir dela.
+      const half = Math.ceil(q.limit / 2);
+      const [older, newer] = await Promise.all([
+        this.db
+          .select()
+          .from(messages)
+          .where(and(...base, lt(messages.seq, q.around)))
+          .orderBy(desc(messages.seq))
+          .limit(half + 1),
+        this.db
+          .select()
+          .from(messages)
+          .where(and(...base, gte(messages.seq, q.around)))
+          .orderBy(asc(messages.seq))
+          .limit(half + 1),
+      ]);
+      return {
+        items: await this.withAttachments([
+          ...older.slice(0, half).reverse(),
+          ...newer.slice(0, half),
+        ]),
+        hasMore: older.length > half,
+        hasNewer: newer.length > half,
+      };
+    }
     if (q.after !== undefined) {
       rows = await this.db
         .select()
@@ -51,8 +80,13 @@ export class MessagesService {
         .where(and(...base, gt(messages.seq, q.after)))
         .orderBy(asc(messages.seq))
         .limit(q.limit + 1);
+      // Aqui "hasMore" fala das mais novas, na direção pedida.
       const hasMore = rows.length > q.limit;
-      return { items: await this.withAttachments(rows.slice(0, q.limit)), hasMore };
+      return {
+        items: await this.withAttachments(rows.slice(0, q.limit)),
+        hasMore,
+        hasNewer: hasMore,
+      };
     }
     rows = await this.db
       .select()
@@ -71,9 +105,17 @@ export class MessagesService {
   async send(
     auth: AuthContext,
     conversationId: string,
-    input: { clientId: string; body: string; attachmentIds: string[] },
+    input: {
+      clientId: string;
+      body: string;
+      attachmentIds: string[];
+    },
   ): Promise<Message> {
-    await this.conversations.requireMember(auth.user.id, conversationId);
+    const { member, conversation } = await this.conversations.requireMember(
+      auth.user.id,
+      conversationId,
+    );
+    ChannelsService.assertCanPost(conversation, member.role);
     const existing = await this.findByClientId(conversationId, auth.user.id, input.clientId);
     if (existing) return existing;
 
@@ -136,11 +178,42 @@ export class MessagesService {
     });
 
     const [message] = await this.withAttachments([row]);
-    this.events.emit('message.created', {
-      message: message!,
-      recipientIds: await this.conversations.memberIds(conversationId),
-    });
+    const recipientIds = await this.conversations.memberIds(conversationId);
+    this.events.emit('message.created', { message: message!, recipientIds });
     return message!;
+  }
+
+  /** Coloca (ou troca) a minha reação, ou retira se for este o emoji atual. */
+  async react(auth: AuthContext, messageId: string, emoji: string, on: boolean): Promise<Message> {
+    const row = await this.load(auth.user.id, messageId);
+    if (row.type !== 'text' || row.deletedAt)
+      throw new AppException(409, 'CONFLICT', 'Não é possível reagir a esta mensagem.');
+    if (on) {
+      // Uma reação por pessoa: escolher outro emoji troca a anterior.
+      await this.db
+        .insert(messageReactions)
+        .values({ messageId, userId: auth.user.id, emoji })
+        .onConflictDoUpdate({
+          target: [messageReactions.messageId, messageReactions.userId],
+          set: { emoji, createdAt: new Date() },
+        });
+    } else {
+      await this.db
+        .delete(messageReactions)
+        .where(
+          and(
+            eq(messageReactions.messageId, messageId),
+            eq(messageReactions.userId, auth.user.id),
+            eq(messageReactions.emoji, emoji),
+          ),
+        );
+    }
+    return this.publishUpdate(row);
+  }
+
+  private async row(id: string): Promise<MessageRow> {
+    const [r] = await this.db.select().from(messages).where(eq(messages.id, id)).limit(1);
+    return r!;
   }
 
   async edit(auth: AuthContext, messageId: string, body: string): Promise<Message> {
@@ -277,8 +350,27 @@ export class MessagesService {
       for (const a of att)
         byMessage.set(a.messageId, [...(byMessage.get(a.messageId) ?? []), toUploaded(a.file)]);
     }
+    const reactions = new Map<string, Reaction[]>();
+    if (ids.length) {
+      const rx = await this.db
+        .select()
+        .from(messageReactions)
+        .where(inArray(messageReactions.messageId, ids))
+        .orderBy(asc(messageReactions.createdAt));
+      for (const r of rx) {
+        const list = reactions.get(r.messageId) ?? [];
+        const entry = list.find((e) => e.emoji === r.emoji);
+        if (entry) entry.userIds.push(r.userId);
+        else list.push({ emoji: r.emoji, userIds: [r.userId] });
+        reactions.set(r.messageId, list);
+      }
+    }
     return rows.map((r) =>
-      toMessage(r, byMessage.get(r.id), r.broadcastId ? (refs.get(r.broadcastId) ?? null) : null),
+      toMessage(r, {
+        attachments: byMessage.get(r.id),
+        broadcast: r.broadcastId ? (refs.get(r.broadcastId) ?? null) : null,
+        reactions: reactions.get(r.id),
+      }),
     );
   }
 }

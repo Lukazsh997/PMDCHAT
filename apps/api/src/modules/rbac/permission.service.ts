@@ -1,16 +1,30 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { type Permission, ROLES, type RoleKey, roleRequiresMfa } from '@plataforma/contracts';
+import {
+  ALL_PERMISSIONS,
+  type Permission,
+  type RoleKey,
+  requiresMfa,
+  SUPER_ADMIN,
+} from '@plataforma/contracts';
 import { eq } from 'drizzle-orm';
 import { DB, type Database } from '../../database/database.js';
-import { orgUnits, roleAssignments } from '../../database/schema/index.js';
+import { orgUnits, roleAssignments, roles } from '../../database/schema/index.js';
 
 export interface Grant {
   id: string;
   role: RoleKey;
+  /** Permissões do papel no momento da consulta (o super administrador tem todas). */
+  permissions: readonly Permission[];
   /** null = global. */
   orgUnitId: string | null;
   /** Caminho materializado da unidade do escopo. */
   orgUnitPath: string | null;
+}
+
+/** Permissões efetivas de um papel guardado no banco. */
+export function rolePermissions(role: { key: string; permissions: string[] }): Permission[] {
+  if (role.key === SUPER_ADMIN) return ALL_PERMISSIONS;
+  return role.permissions.filter((p): p is Permission => (ALL_PERMISSIONS as string[]).includes(p));
 }
 
 /**
@@ -22,7 +36,7 @@ export class Grants {
 
   get permissions(): Permission[] {
     const set = new Set<Permission>();
-    for (const g of this.items) for (const p of ROLES[g.role].permissions) set.add(p);
+    for (const g of this.items) for (const p of g.permissions) set.add(p);
     return [...set];
   }
 
@@ -52,11 +66,11 @@ export class Grants {
   }
 
   get requiresMfa(): boolean {
-    return this.items.some((g) => roleRequiresMfa(g.role));
+    return this.items.some((g) => requiresMfa(g.permissions));
   }
 
   private grants(g: Grant, permission: Permission): boolean {
-    return (ROLES[g.role].permissions as readonly Permission[]).includes(permission);
+    return g.permissions.includes(permission);
   }
 }
 
@@ -69,16 +83,23 @@ export class PermissionService {
       .select({
         id: roleAssignments.id,
         role: roleAssignments.role,
+        rolePermissions: roles.permissions,
         orgUnitId: roleAssignments.orgUnitId,
         orgUnitPath: orgUnits.path,
       })
       .from(roleAssignments)
+      .innerJoin(roles, eq(roles.key, roleAssignments.role))
       .leftJoin(orgUnits, eq(orgUnits.id, roleAssignments.orgUnitId))
       .where(eq(roleAssignments.userId, userId));
+    // Mudar um papel no painel vale na próxima requisição: nada fica em cache.
     return new Grants(
-      rows
-        .filter((r) => r.role in ROLES)
-        .map((r) => ({ ...r, role: r.role as RoleKey, orgUnitPath: r.orgUnitPath ?? null })),
+      rows.map((r) => ({
+        id: r.id,
+        role: r.role,
+        permissions: rolePermissions({ key: r.role, permissions: r.rolePermissions }),
+        orgUnitId: r.orgUnitId,
+        orgUnitPath: r.orgUnitPath ?? null,
+      })),
     );
   }
 }

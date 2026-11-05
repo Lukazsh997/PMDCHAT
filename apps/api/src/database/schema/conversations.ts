@@ -24,6 +24,8 @@ import { users } from './users.js';
 export const conversationType = pgEnum('conversation_type', ['direct', 'group']);
 export const memberRole = pgEnum('member_role', ['owner', 'admin', 'member']);
 export const messageType = pgEnum('message_type', ['text', 'system']);
+/** 'mentions' ficou obsoleto com a retirada das menções (a migração 0011 converte para 'none'). */
+export const notificationLevel = pgEnum('notification_level', ['all', 'mentions', 'none']);
 
 export const conversations = pgTable(
   'conversations',
@@ -35,6 +37,11 @@ export const conversations = pgTable(
     /** Conversa direta: os dois ids em ordem, garante uma única conversa por par. */
     directKey: varchar({ length: 80 }),
     createdBy: uuid().references(() => users.id, { onDelete: 'set null' }),
+    /** Canal de avisos: só os administradores do canal publicam. */
+    isChannel: boolean().notNull().default(false),
+    /** Canal ligado a uma unidade: as pessoas lotadas entram e saem sozinhas. */
+    orgUnitId: uuid().references((): AnyPgColumn => orgUnits.id, { onDelete: 'set null' }),
+    includeSubunits: boolean().notNull().default(true),
     /** Último número de sequência usado; incrementado a cada mensagem. */
     lastSeq: bigint({ mode: 'number' }).notNull().default(0),
     lastMessageAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -63,6 +70,10 @@ export const conversationMembers = pgTable(
     joinedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     /** Primeira mensagem visível ao membro (quem entra depois não vê o histórico anterior). */
     joinedSeq: bigint({ mode: 'number' }).notNull().default(0),
+    /** Entrou pela lotação (canal de unidade): a sincronização põe e tira. */
+    autoJoined: boolean().notNull().default(false),
+    /** Quando avisar. Vazio = padrão (todas; em grupos com mais de 50 pessoas, nenhuma). */
+    notificationLevel: notificationLevel(),
   },
   (t) => [
     primaryKey({ columns: [t.conversationId, t.userId] }),
@@ -92,6 +103,8 @@ export const messages = pgTable(
     purgedAt: timestamp({ withTimezone: true }),
     /** Mensagem entregue por um comunicado em massa. */
     broadcastId: uuid().references((): AnyPgColumn => broadcasts.id, { onDelete: 'set null' }),
+    // body_tsv (tsvector gerado, configuração pt_unaccent) existe só no banco: ver a
+    // migração 0006. As consultas de busca usam SQL direto.
   },
   (t) => [
     uniqueIndex('messages_conversation_seq_uq').on(t.conversationId, t.seq),
@@ -128,6 +141,22 @@ export const broadcasts = pgTable(
     uniqueIndex('broadcasts_client_id_uq').on(t.senderId, t.clientId),
     index('broadcasts_unit_idx').on(t.orgUnitId),
   ],
+);
+
+/** Reações: no máximo uma por pessoa em cada mensagem (outro emoji substitui). */
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    messageId: uuid()
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    emoji: varchar({ length: 16 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.userId] })],
 );
 
 /** Histórico de edições, preservado para auditoria. */
