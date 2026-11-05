@@ -12,8 +12,6 @@ const msg = (p: Partial<ChatMessage>): ChatMessage => ({
   body: 'oi',
   broadcast: null,
   reactions: [],
-  mentions: [],
-  mentionsAll: false,
   system: null,
   attachments: [],
   clientId: null,

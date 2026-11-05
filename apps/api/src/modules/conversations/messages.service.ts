@@ -2,13 +2,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   type Attachment,
   type BroadcastRef,
-  type MentionPage,
   type Message,
   MESSAGE_RULES,
   type MessagePage,
   type Reaction,
 } from '@plataforma/contracts';
-import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { AppException } from '../../common/app-exception.js';
 import { DomainEvents } from '../../common/events/domain-events.js';
 import { DB, type Database } from '../../database/database.js';
@@ -19,16 +18,13 @@ import {
   files,
   messageAttachments,
   messageEdits,
-  messageMentions,
   messageReactions,
   type MessageRow,
   messages,
-  users,
 } from '../../database/schema/index.js';
 import { AuditService } from '../audit/index.js';
 import type { AuthContext } from '../auth/index.js';
 import { toUploaded } from '../files/index.js';
-import type { Grants } from '../rbac/index.js';
 import { ChannelsService } from './channels.service.js';
 import { ConversationsService } from './conversations.service.js';
 import { toMessage } from './message-mapper.js';
@@ -113,10 +109,7 @@ export class MessagesService {
       clientId: string;
       body: string;
       attachmentIds: string[];
-      mentions: string[];
-      mentionAll: boolean;
     },
-    grants: Grants,
   ): Promise<Message> {
     const { member, conversation } = await this.conversations.requireMember(
       auth.user.id,
@@ -125,8 +118,6 @@ export class MessagesService {
     ChannelsService.assertCanPost(conversation, member.role);
     const existing = await this.findByClientId(conversationId, auth.user.id, input.clientId);
     if (existing) return existing;
-
-    const mentions = await this.resolveMentions(auth, conversationId, input, grants);
 
     const row = await this.db.transaction(async (tx) => {
       if (input.attachmentIds.length) {
@@ -163,14 +154,8 @@ export class MessagesService {
           senderId: auth.user.id,
           body: input.body,
           clientId: input.clientId,
-          mentionsAll: mentions.all,
         })
         .returning();
-      if (mentions.userIds.length) {
-        await tx
-          .insert(messageMentions)
-          .values(mentions.userIds.map((userId) => ({ messageId: msg!.id, userId })));
-      }
       if (input.attachmentIds.length) {
         await tx.insert(messageAttachments).values(
           input.attachmentIds.map((fileId, position) => ({
@@ -198,16 +183,20 @@ export class MessagesService {
     return message!;
   }
 
-  /** Liga ou desliga a minha reação com este emoji. */
+  /** Coloca (ou troca) a minha reação, ou retira se for este o emoji atual. */
   async react(auth: AuthContext, messageId: string, emoji: string, on: boolean): Promise<Message> {
     const row = await this.load(auth.user.id, messageId);
     if (row.type !== 'text' || row.deletedAt)
       throw new AppException(409, 'CONFLICT', 'Não é possível reagir a esta mensagem.');
     if (on) {
+      // Uma reação por pessoa: escolher outro emoji troca a anterior.
       await this.db
         .insert(messageReactions)
         .values({ messageId, userId: auth.user.id, emoji })
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: [messageReactions.messageId, messageReactions.userId],
+          set: { emoji, createdAt: new Date() },
+        });
     } else {
       await this.db
         .delete(messageReactions)
@@ -222,139 +211,12 @@ export class MessagesService {
     return this.publishUpdate(row);
   }
 
-  /**
-   * Aba Menções: mensagens que me citam (ou @todos) nas conversas em que estou,
-   * da mais recente para a mais antiga.
-   */
-  async mentions(userId: string, q: { before?: string; limit: number }): Promise<MentionPage> {
-    const rows = (await this.db.execute(sql`
-      select m.id, c.id as conversation_id, c.type, c.name,
-             (m.seq > greatest(cm.last_read_seq, cm.joined_seq)) as unread
-        from messages m
-        join conversation_members cm on cm.conversation_id = m.conversation_id and cm.user_id = ${userId}
-        join conversations c on c.id = m.conversation_id
-       where m.seq > cm.joined_seq and m.deleted_at is null and m.type = 'text'
-         and m.sender_id is distinct from ${userId}
-         and (m.mentions_all or exists (
-               select 1 from message_mentions mm where mm.message_id = m.id and mm.user_id = ${userId}))
-         ${q.before ? sql`and m.created_at < ${new Date(q.before).toISOString()}::timestamptz` : sql``}
-       order by m.created_at desc
-       limit ${q.limit + 1}
-    `)) as unknown as {
-      id: string;
-      conversation_id: string;
-      type: 'direct' | 'group';
-      name: string | null;
-      unread: boolean;
-    }[];
-    const page = rows.slice(0, q.limit);
-    const full = page.length
-      ? await this.db
-          .select()
-          .from(messages)
-          .where(
-            inArray(
-              messages.id,
-              page.map((r) => r.id),
-            ),
-          )
-      : [];
-    const byId = new Map((await this.withAttachments(full)).map((m) => [m.id, m]));
-    const senders = await this.db
-      .select({ id: users.id, name: users.displayName })
-      .from(users)
-      .where(inArray(users.id, [...new Set(full.map((m) => m.senderId!).filter(Boolean))]));
-    const nameOf = new Map(senders.map((u) => [u.id, u.name]));
-    return {
-      items: page.map((r) => {
-        const message = byId.get(r.id)!;
-        return {
-          message,
-          senderName: nameOf.get(message.senderId ?? '') ?? 'Alguém',
-          conversation: {
-            id: r.conversation_id,
-            type: r.type,
-            title:
-              r.type === 'direct'
-                ? (nameOf.get(message.senderId ?? '') ?? 'Conversa')
-                : (r.name ?? 'Grupo'),
-          },
-          unread: r.unread,
-        };
-      }),
-      hasMore: rows.length > q.limit,
-    };
-  }
-
-  /**
-   * Menções válidas: só membros da conversa, e só quem aparece como "@Nome" no texto
-   * (apagar o nome do texto tira a menção). @todos vale em grupos; em grupos grandes
-   * exige ser administrador do grupo ou ter a permissão `messages.mention_all`.
-   */
-  private async resolveMentions(
-    auth: AuthContext,
-    conversationId: string,
-    input: { body: string; mentions: string[]; mentionAll: boolean },
-    grants: Grants,
-  ): Promise<{ userIds: string[]; all: boolean }> {
-    const body = input.body.toLocaleLowerCase('pt-BR');
-    let all = false;
-    if (input.mentionAll && body.includes('@todos')) {
-      const { conversation, member } = await this.conversations.requireMember(
-        auth.user.id,
-        conversationId,
-      );
-      if (conversation.type === 'group') {
-        const [n] = await this.db
-          .select({ n: count() })
-          .from(conversationMembers)
-          .where(eq(conversationMembers.conversationId, conversationId));
-        const allowed =
-          (n?.n ?? 0) <= MESSAGE_RULES.mentionAllFreeUpTo ||
-          member.role !== 'member' ||
-          grants.hasAny('messages.mention_all');
-        if (!allowed) {
-          throw new AppException(
-            403,
-            'FORBIDDEN',
-            `Em grupos com mais de ${MESSAGE_RULES.mentionAllFreeUpTo} pessoas, só administradores do grupo usam @todos.`,
-          );
-        }
-        all = true;
-      }
-    }
-    const ids = [...new Set(input.mentions)].filter((id) => id !== auth.user.id);
-    if (!ids.length) return { userIds: [], all };
-    const rows = await this.db
-      .select({ id: users.id, name: users.displayName })
-      .from(conversationMembers)
-      .innerJoin(users, eq(users.id, conversationMembers.userId))
-      .where(
-        and(
-          eq(conversationMembers.conversationId, conversationId),
-          inArray(conversationMembers.userId, ids),
-        ),
-      );
-    return {
-      userIds: rows
-        .filter((r) => body.includes(`@${r.name.toLocaleLowerCase('pt-BR')}`))
-        .map((r) => r.id),
-      all,
-    };
-  }
-
   private async row(id: string): Promise<MessageRow> {
     const [r] = await this.db.select().from(messages).where(eq(messages.id, id)).limit(1);
     return r!;
   }
 
-  async edit(
-    auth: AuthContext,
-    messageId: string,
-    input: { body: string; mentions: string[]; mentionAll: boolean },
-    grants: Grants,
-  ): Promise<Message> {
-    const { body } = input;
+  async edit(auth: AuthContext, messageId: string, body: string): Promise<Message> {
     const row = await this.load(auth.user.id, messageId);
     this.assertAuthor(auth, row, 'editar');
     if (row.deletedAt) throw new AppException(409, 'CONFLICT', 'Esta mensagem foi apagada.');
@@ -363,7 +225,6 @@ export class MessagesService {
       return (await this.withAttachments([row]))[0]!;
     }
 
-    const mentions = await this.resolveMentions(auth, row.conversationId, input, grants);
     const updated = await this.db.transaction(async (tx) => {
       // O prazo é conferido na própria atualização, pelo relógio do banco que gravou o envio:
       // o horário do computador de quem edita não conta, e não há corrida com o prazo.
@@ -376,21 +237,6 @@ export class MessagesService {
       await tx
         .insert(messageEdits)
         .values({ messageId, previousBody: row.body, editedBy: auth.user.id });
-      // Menções recalculadas pelo texto novo.
-      await tx.delete(messageMentions).where(eq(messageMentions.messageId, messageId));
-      if (mentions.userIds.length) {
-        await tx
-          .insert(messageMentions)
-          .values(mentions.userIds.map((userId) => ({ messageId, userId })));
-      }
-      if (u.mentionsAll !== mentions.all) {
-        const [m] = await tx
-          .update(messages)
-          .set({ mentionsAll: mentions.all })
-          .where(eq(messages.id, messageId))
-          .returning();
-        return m!;
-      }
       return u;
     });
     return this.publishUpdate(updated);
@@ -505,16 +351,12 @@ export class MessagesService {
         byMessage.set(a.messageId, [...(byMessage.get(a.messageId) ?? []), toUploaded(a.file)]);
     }
     const reactions = new Map<string, Reaction[]>();
-    const mentioned = new Map<string, string[]>();
     if (ids.length) {
-      const [rx, mx] = await Promise.all([
-        this.db
-          .select()
-          .from(messageReactions)
-          .where(inArray(messageReactions.messageId, ids))
-          .orderBy(asc(messageReactions.createdAt)),
-        this.db.select().from(messageMentions).where(inArray(messageMentions.messageId, ids)),
-      ]);
+      const rx = await this.db
+        .select()
+        .from(messageReactions)
+        .where(inArray(messageReactions.messageId, ids))
+        .orderBy(asc(messageReactions.createdAt));
       for (const r of rx) {
         const list = reactions.get(r.messageId) ?? [];
         const entry = list.find((e) => e.emoji === r.emoji);
@@ -522,15 +364,12 @@ export class MessagesService {
         else list.push({ emoji: r.emoji, userIds: [r.userId] });
         reactions.set(r.messageId, list);
       }
-      for (const m of mx)
-        mentioned.set(m.messageId, [...(mentioned.get(m.messageId) ?? []), m.userId]);
     }
     return rows.map((r) =>
       toMessage(r, {
         attachments: byMessage.get(r.id),
         broadcast: r.broadcastId ? (refs.get(r.broadcastId) ?? null) : null,
         reactions: reactions.get(r.id),
-        mentions: mentioned.get(r.id),
       }),
     );
   }

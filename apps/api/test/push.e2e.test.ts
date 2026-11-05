@@ -82,7 +82,7 @@ describe('Web Push', () => {
     ]);
   });
 
-  it('respeita silenciar e o nível "só menções"', async () => {
+  it('respeita silenciar e o nível "nenhuma"', async () => {
     const { ana, bia, caio, g } = await setup();
     await call(ctx, 'PATCH', `/conversations/${g.id}/me`, {
       cookie: bia.cookie,
@@ -90,30 +90,25 @@ describe('Web Push', () => {
     });
     const level = await call(ctx, 'PATCH', `/conversations/${g.id}/me`, {
       cookie: caio.cookie,
+      body: { notificationLevel: 'none' },
+    });
+    expect(level.body).toMatchObject({ notificationSetting: 'none', notificationLevel: 'none' });
+    // O nível "só menções" não existe mais.
+    const old = await call(ctx, 'PATCH', `/conversations/${g.id}/me`, {
+      cookie: caio.cookie,
       body: { notificationLevel: 'mentions' },
     });
-    expect(level.body).toMatchObject({
-      notificationSetting: 'mentions',
-      notificationLevel: 'mentions',
-    });
+    expect(old.status).toBe(400);
 
     const plain = (await send(ana.cookie, g.id, { body: 'aviso comum' })).body!;
     const s1 = fakeSender();
     expect((await deliver(plain.id, [bia.user.id, caio.user.id], s1)).sent).toBe(0);
 
-    // Menção fura o silêncio e o "só menções".
-    const mention = (
-      await send(ana.cookie, g.id, {
-        body: '@Bia Souza e @Caio Melo, vejam',
-        mentions: [bia.user.id, caio.user.id],
-      })
-    ).body!;
-    const s2 = fakeSender();
-    await deliver(mention.id, [bia.user.id, caio.user.id], s2);
-    expect(s2.sent.map((x) => x.userId).sort()).toEqual([bia.user.id, caio.user.id].sort());
-    expect(s2.sent[0]!.payload.title).toBe('Ana Lima mencionou você em Projeto');
-
-    // Sem silêncio, quem avisa tudo recebe; quem escolheu "só menções" (Caio), não.
+    await call(ctx, 'PATCH', `/conversations/${g.id}/me`, {
+      cookie: bia.cookie,
+      body: { mutedUntil: null },
+    });
+    // Sem silêncio, quem avisa tudo recebe; quem escolheu "nenhuma" (Caio), não.
     await call(ctx, 'POST', '/push/subscriptions', { cookie: ana.cookie, body: sub(3) });
     const reply = (await send(bia.cookie, g.id, { body: 'Respondendo' })).body!;
     const s3 = fakeSender();
@@ -125,7 +120,7 @@ describe('Web Push', () => {
     });
   });
 
-  it('grupos grandes avisam só menções por padrão; inscrição recusada é apagada', async () => {
+  it('grupos grandes não avisam por padrão; inscrição recusada é apagada', async () => {
     const ana = await signedIn(ctx, { username: 'ana', displayName: 'Ana Lima' });
     const bia = await signedIn(ctx, { username: 'bia', displayName: 'Bia Souza' });
     const extra: string[] = [];
@@ -136,7 +131,7 @@ describe('Web Push', () => {
         body: { name: 'Todos', memberIds: [bia.user.id, ...extra] },
       })
     ).body!;
-    expect(g.notificationLevel).toBe('mentions');
+    expect(g.notificationLevel).toBe('none');
     await call(ctx, 'POST', '/push/subscriptions', { cookie: bia.cookie, body: sub(9) });
     const m = (await send(ana.cookie, g.id, { body: 'oi' })).body!;
     const quiet = fakeSender();

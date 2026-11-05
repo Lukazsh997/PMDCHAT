@@ -10,7 +10,6 @@ import { UsersPage } from './features/admin/UsersPage';
 import { LoginPage } from './features/auth/LoginPage';
 import { RequireAuth } from './features/auth/RequireAuth';
 import { ChatPage } from './features/chat/ChatPage';
-import { MentionsPage } from './features/chat/MentionsPage';
 import { OrgDirectoryPage } from './features/org/OrgDirectoryPage';
 import { SearchPage } from './features/search/SearchPage';
 import { AppShell } from './features/shell/AppShell';
@@ -30,7 +29,6 @@ export function App() {
           <Route index element={<ChatPage />} />
           <Route path="c/:conversationId" element={<ChatPage />} />
           <Route path="organograma" element={<OrgDirectoryPage />} />
-          <Route path="mencoes" element={<MentionsPage />} />
           <Route path="busca" element={<SearchPage />} />
           <Route
             path="conta"

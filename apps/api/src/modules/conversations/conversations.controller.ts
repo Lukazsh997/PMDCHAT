@@ -21,7 +21,6 @@ import {
   editMessageSchema,
   markReadSchema,
   type Message,
-  type MentionPage,
   type MessagePage,
   reactionSchema,
   type SearchFileHit,
@@ -50,11 +49,6 @@ const pageQuery = z.object({
   after: z.coerce.number().int().min(0).optional(),
   around: z.coerce.number().int().min(0).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-});
-
-const mentionsQuery = z.object({
-  before: z.iso.datetime({ offset: true }).optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(30),
 });
 
 @Controller()
@@ -169,9 +163,8 @@ export class ConversationsController {
     @CurrentAuth() auth: AuthContext,
     @Param('id', id) cid: string,
     @Body(new ZodPipe(sendMessageSchema)) b: z.output<typeof sendMessageSchema>,
-    @Req() req: FastifyRequest,
   ): Promise<Message> {
-    return this.messages.send(auth, cid, b, await requestGrants(req, this.permissions));
+    return this.messages.send(auth, cid, b);
   }
 
   @Put('messages/:id/reactions')
@@ -217,22 +210,13 @@ export class ConversationsController {
     return this.search.searchFiles(auth.user.id, q);
   }
 
-  @Get('mentions')
-  mentions(
-    @CurrentAuth() auth: AuthContext,
-    @Query(new ZodPipe(mentionsQuery)) q: z.infer<typeof mentionsQuery>,
-  ): Promise<MentionPage> {
-    return this.messages.mentions(auth.user.id, q);
-  }
-
   @Patch('messages/:id')
   async edit(
     @CurrentAuth() auth: AuthContext,
     @Param('id', id) mid: string,
     @Body(new ZodPipe(editMessageSchema)) b: z.output<typeof editMessageSchema>,
-    @Req() req: FastifyRequest,
   ): Promise<Message> {
-    return this.messages.edit(auth, mid, b, await requestGrants(req, this.permissions));
+    return this.messages.edit(auth, mid, b.body);
   }
 
   @Delete('messages/:id')

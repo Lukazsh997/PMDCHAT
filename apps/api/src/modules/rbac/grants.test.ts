@@ -58,11 +58,7 @@ describe('Grants', () => {
     ]);
     expect(g.hasAny('admin.access')).toBe(false);
     expect(g.requiresMfa).toBe(false);
-    expect(g.permissions).toEqual([
-      'broadcast.send',
-      'messages.mention_all',
-      'conversations.create_channel',
-    ]);
+    expect(g.permissions).toEqual(['broadcast.send', 'conversations.create_channel']);
     expect(g.canOn('broadcast.send', '/u/x/')).toBe(true);
     expect(g.canOn('broadcast.send', '/v/')).toBe(false);
   });

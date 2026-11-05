@@ -49,7 +49,7 @@ export function MessageList({
   loadOlder: () => Promise<void>;
   loadNewer?: () => Promise<void>;
   onJumpLatest?: () => void;
-  /** Mensagem a mostrar e destacar (vinda da busca ou das menções). */
+  /** Mensagem a mostrar e destacar (vinda da busca). */
   focusId?: string | null;
   onFocused?: () => void;
   detail: ConversationDetail | undefined;
@@ -223,7 +223,7 @@ export function MessageList({
   );
 }
 
-/** Quem é quem na conversa: para nomes nas reações e nas menções. */
+/** Quem é quem na conversa: para os nomes nas reações. */
 export interface PeopleIndex {
   meId: string;
   nameOf: (id: string) => string;
@@ -250,7 +250,7 @@ function Bubble({
   read: boolean;
   actions: MessageActions;
   people: PeopleIndex;
-  /** Mensagem aberta pela busca ou pelas menções. */
+  /** Mensagem aberta pela busca. */
   highlight?: boolean;
 }) {
   const deleted = !!m.deletedAt;
@@ -319,14 +319,7 @@ function Bubble({
           ) : (
             <div className="flex flex-col gap-1.5">
               {m.attachments.length > 0 && <Attachments items={m.attachments} />}
-              {m.body && (
-                <MessageText
-                  text={m.body}
-                  mentionNames={m.mentions.map(people.nameOf)}
-                  mentionsAll={m.mentionsAll}
-                  myName={people.nameOf(people.meId)}
-                />
-              )}
+              {m.body && <MessageText text={m.body} />}
             </div>
           )}
           <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] leading-4 text-muted">

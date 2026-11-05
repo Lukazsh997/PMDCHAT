@@ -10,7 +10,7 @@ lotação ou de situação (evento `user.membership_changed`) e quando o organog
 (`org.changed`). Membros automáticos não saem nem são removidos à mão, mas podem silenciar. Criar
 canal exige `conversations.create_channel` sobre a unidade.
 
-**Por quê.** Reaproveita grupos (membros, menções, busca e notificações), e o organograma vira a
+**Por quê.** Reaproveita grupos (membros, busca e notificações), e o organograma vira a
 lista de distribuição sem manutenção manual.
 
 **Consequências.** Comunicados avulsos continuam existindo (ADR 0011). O canal serve para avisos

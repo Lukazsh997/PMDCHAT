@@ -175,15 +175,6 @@ function ConversationItem({ c, meId }: { c: ConversationSummary; meId: string })
             {preview}
           </span>
           {muted && <BellOff size={14} className="shrink-0 text-muted" aria-label="Silenciada" />}
-          {c.unreadMentions > 0 && (
-            <span
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-ink"
-              aria-label={`${c.unreadMentions} ${c.unreadMentions === 1 ? 'menção' : 'menções'} a você`}
-              title="Mencionaram você"
-            >
-              @
-            </span>
-          )}
           {unread && (
             <span
               className={`min-w-5 shrink-0 rounded-full px-1.5 text-center text-xs leading-5 font-bold ${muted ? 'bg-line text-muted' : 'bg-accent text-rail-strong'}`}

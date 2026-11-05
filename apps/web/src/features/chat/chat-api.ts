@@ -4,7 +4,6 @@ import type {
   ConversationSummary,
   DirectoryUser,
   Message,
-  MentionPage,
   MessagePage,
   MessagePreview,
   NotificationLevel,
@@ -20,14 +19,7 @@ export const keys = {
   detail: (id: string) => ['conversation', id] as const,
   messages: (id: string) => ['messages', id] as const,
   directory: (q: string) => ['directory', q] as const,
-  mentions: ['mentions'] as const,
 };
-
-/** Opções de envio além do texto e dos anexos. */
-export interface SendExtras {
-  mentions?: string[];
-  mentionAll?: boolean;
-}
 
 /** Mensagem na tela: pode ainda estar sendo enviada ou ter falhado. */
 export interface ChatMessage extends Message {
@@ -38,7 +30,7 @@ export interface ChatMessage extends Message {
 export interface MessagesState {
   items: ChatMessage[];
   hasMore: boolean;
-  /** Aberta no meio (pela busca ou menções): faltam as mais novas. */
+  /** Aberta no meio (pela busca): faltam as mais novas. */
   hasNewer?: boolean;
 }
 
@@ -189,15 +181,10 @@ export function dropLocal(qc: QueryClient, m: ChatMessage): void {
   );
 }
 
-export function useMentions() {
-  return useQuery({
-    queryKey: keys.mentions,
-    queryFn: () => api<MentionPage>('GET', '/mentions?limit=50'),
-    staleTime: 15_000,
-  });
-}
-
-/** Liga ou desliga a minha reação; a tela muda na hora e o servidor confirma. */
+/**
+ * Coloca, troca ou tira a minha reação (uma por mensagem); a tela muda na hora e o
+ * servidor confirma.
+ */
 export function useReact(meId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -206,12 +193,10 @@ export function useReact(meId: string) {
         emoji: v.emoji,
       }),
     onMutate: ({ message, emoji, on }) => {
+      // Tira a minha reação anterior (seja qual for) e, se for o caso, põe a nova.
       const reactions = message.reactions
-        .map((r) =>
-          r.emoji === emoji
-            ? { ...r, userIds: on ? [...r.userIds, meId] : r.userIds.filter((u) => u !== meId) }
-            : r,
-        )
+        .map((r) => ({ ...r, userIds: r.userIds.filter((u) => u !== meId) }))
+        .map((r) => (on && r.emoji === emoji ? { ...r, userIds: [...r.userIds, meId] } : r))
         .filter((r) => r.userIds.length);
       if (on && !reactions.some((r) => r.emoji === emoji))
         reactions.push({ emoji, userIds: [meId] });
@@ -238,11 +223,6 @@ export function applyToList(
     found = true;
     const c = list[idx]!;
     const mine = m.senderId === meId;
-    const mentionsMe =
-      !mine &&
-      m.type === 'text' &&
-      (m.mentionsAll || m.mentions.includes(meId)) &&
-      activeConversation.get() !== c.id;
     const counts = m.type === 'text' && !mine && activeConversation.get() !== c.id;
     const updated: ConversationSummary = {
       ...c,
@@ -250,7 +230,6 @@ export function applyToList(
       lastMessage: preview,
       lastMessageAt: m.createdAt,
       unreadCount: counts ? c.unreadCount + 1 : mine ? 0 : c.unreadCount,
-      unreadMentions: mentionsMe ? c.unreadMentions + 1 : mine ? 0 : c.unreadMentions,
       lastReadSeq: mine ? m.seq : c.lastReadSeq,
     };
     return [updated, ...list.slice(0, idx), ...list.slice(idx + 1)];
@@ -276,12 +255,7 @@ export function previewOf(m: Message, senderName: string | null): MessagePreview
 export function useSendMessage(conversationId: string, meId: string) {
   const qc = useQueryClient();
   return useCallback(
-    async (
-      body: string,
-      attachments: Attachment[] = [],
-      extras: SendExtras = {},
-      clientId = newClientId(),
-    ) => {
+    async (body: string, attachments: Attachment[] = [], clientId = newClientId()) => {
       const optimistic: ChatMessage = {
         id: `local-${clientId}`,
         conversationId,
@@ -297,8 +271,6 @@ export function useSendMessage(conversationId: string, meId: string) {
         deletedAt: null,
         broadcast: null,
         reactions: [],
-        mentions: extras.mentions ?? [],
-        mentionsAll: !!extras.mentionAll,
         status: 'sending',
         pendingAttachmentIds: attachments.map((a) => a.id),
       };
@@ -308,8 +280,6 @@ export function useSendMessage(conversationId: string, meId: string) {
           clientId,
           body,
           attachmentIds: attachments.map((a) => a.id),
-          mentions: extras.mentions ?? [],
-          mentionAll: !!extras.mentionAll,
         });
         dropLocal(qc, optimistic);
         upsertMessage(qc, saved);
@@ -326,12 +296,8 @@ export function useSendMessage(conversationId: string, meId: string) {
 export function useEditMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; body: string; mentions?: string[]; mentionAll?: boolean }) =>
-      api<Message>('PATCH', `/messages/${v.id}`, {
-        body: v.body,
-        mentions: v.mentions ?? [],
-        mentionAll: !!v.mentionAll,
-      }),
+    mutationFn: (v: { id: string; body: string }) =>
+      api<Message>('PATCH', `/messages/${v.id}`, { body: v.body }),
     onSuccess: (m) => upsertMessage(qc, m),
   });
 }
@@ -349,11 +315,11 @@ const readTimers = new Map<string, number>();
 export function markRead(qc: QueryClient, conversationId: string, seq: number): void {
   const list = qc.getQueryData<ConversationSummary[]>(keys.list);
   const c = list?.find((x) => x.id === conversationId);
-  if (c && c.lastReadSeq >= seq && c.unreadCount === 0 && c.unreadMentions === 0) return;
+  if (c && c.lastReadSeq >= seq && c.unreadCount === 0) return;
   qc.setQueryData<ConversationSummary[]>(keys.list, (l) =>
     l?.map((x) =>
       x.id === conversationId
-        ? { ...x, unreadCount: 0, unreadMentions: 0, lastReadSeq: Math.max(x.lastReadSeq, seq) }
+        ? { ...x, unreadCount: 0, lastReadSeq: Math.max(x.lastReadSeq, seq) }
         : x,
     ),
   );

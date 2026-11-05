@@ -40,7 +40,6 @@ interface SummaryRow extends Record<string, unknown> {
   notification_level: NotificationLevel | null;
   member_count: string;
   unread_count: string;
-  unread_mentions: string;
   is_channel: boolean;
   include_subunits: boolean;
   ou_id: string | null;
@@ -86,12 +85,6 @@ export class ConversationsService {
                where x.conversation_id = c.id and x.seq > greatest(m.last_read_seq, m.joined_seq)
                  and x.type = 'text' and x.deleted_at is null
                  and x.sender_id is distinct from ${userId}) as unread_count,
-             (select count(*) from messages x
-               where x.conversation_id = c.id and x.seq > greatest(m.last_read_seq, m.joined_seq)
-                 and x.type = 'text' and x.deleted_at is null
-                 and x.sender_id is distinct from ${userId}
-                 and (x.mentions_all or exists (select 1 from message_mentions mm
-                       where mm.message_id = x.id and mm.user_id = ${userId}))) as unread_mentions,
              case when c.type = 'direct' then
                (select x.user_id from conversation_members x where x.conversation_id = c.id and x.user_id <> ${userId} limit 1)
              end as peer_id,
@@ -154,7 +147,6 @@ export class ConversationsService {
         lastSeq: Number(r.last_seq),
         lastReadSeq: Number(r.last_read_seq),
         unreadCount: Number(r.unread_count),
-        unreadMentions: Number(r.unread_mentions),
         mutedUntil: r.muted_until ? new Date(r.muted_until).toISOString() : null,
         notificationSetting: r.notification_level,
         notificationLevel: effectiveNotificationLevel({
@@ -579,10 +571,12 @@ export class ConversationsService {
       lastSeq: conversation.lastSeq,
       lastReadSeq: member.lastReadSeq,
       unreadCount: 0,
-      unreadMentions: 0,
       mutedUntil: member.mutedUntil?.toISOString() ?? null,
-      notificationSetting: member.notificationLevel,
-      notificationLevel: member.notificationLevel ?? 'all',
+      // 'mentions' é valor antigo do banco (a migração 0011 converte para 'none').
+      notificationSetting:
+        member.notificationLevel === 'mentions' ? 'none' : member.notificationLevel,
+      notificationLevel:
+        member.notificationLevel === 'mentions' ? 'none' : (member.notificationLevel ?? 'all'),
       lastMessage: null,
       lastMessageAt: conversation.lastMessageAt.toISOString(),
     };

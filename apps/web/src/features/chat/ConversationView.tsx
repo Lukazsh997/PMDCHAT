@@ -22,7 +22,6 @@ import {
 import { Composer, type ComposerHandle } from './Composer';
 import { ConversationInfo } from './GroupInfoPanel';
 import { usePresence, useTyping, useWatchPresence } from './live-stores';
-import type { Mentionable } from './mentions';
 import { type MessageActions, MessageList } from './MessageList';
 
 const PRESENCE_TEXT = { online: 'disponível', away: 'ausente', offline: 'desconectado' } as const;
@@ -42,7 +41,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const [showInfo, setShowInfo] = useState(false);
   const react = useReact(meId);
   const [params, setParams] = useSearchParams();
-  // Mensagem a mostrar (?m=id&s=seq), vinda da busca ou das menções.
+  // Mensagem a mostrar (?m=id&s=seq), vinda da busca.
   const focusId = params.get('m');
   const focusSeq = Number(params.get('s')) || null;
   const { jumpTo } = messages;
@@ -85,25 +84,12 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const myRole = d?.myRole ?? summary?.myRole;
   // Canal de avisos: só administradores do canal publicam.
   const canPost = !channel || (myRole !== undefined && myRole !== 'member');
-  const mentionables: Mentionable[] = (d?.members ?? [])
-    .filter((m) => m.id !== meId && !m.removed)
-    .map((m) => ({ id: m.id, displayName: m.displayName, avatarUrl: m.avatarUrl }));
-  const allowMentionAll =
-    d?.type === 'group' &&
-    (d.members.length <= MESSAGE_RULES.mentionAllFreeUpTo ||
-      d.myRole !== 'member' ||
-      me.permissions.includes('messages.mention_all'));
   const actions: MessageActions = {
     onEdit: setEditing,
     onDelete: setConfirmDelete,
     onRetry: (m) => {
       dropLocal(qc, m);
-      void send(
-        m.body,
-        m.attachments,
-        { mentions: m.mentions, mentionAll: m.mentionsAll },
-        m.clientId ?? undefined,
-      );
+      void send(m.body, m.attachments, m.clientId ?? undefined);
     },
     onReact: (message, emoji, on) =>
       react.mutate({ message, emoji, on }, { onError: (e) => toast(e.message, 'error') }),
@@ -246,19 +232,17 @@ export function ConversationView({ conversationId }: { conversationId: string })
               )
                 setEditing(last);
             }}
-            onSubmitEdit={async (body, extras) => {
+            onSubmitEdit={async (body) => {
               await edit
-                .mutateAsync({ id: editing!.id, body, ...extras })
+                .mutateAsync({ id: editing!.id, body })
                 .catch((e: Error) => toast(e.message, 'error'));
               setEditing(null);
             }}
-            onSend={async (body, attachments, extras) => {
+            onSend={async (body, attachments) => {
               // Lendo no meio da conversa: volta ao fim para ver a própria mensagem.
               if (messages.data?.hasNewer) await messages.jumpToLatest();
-              void send(body, attachments, extras);
+              void send(body, attachments);
             }}
-            mentionables={mentionables}
-            allowMentionAll={allowMentionAll}
           />
         )}
 

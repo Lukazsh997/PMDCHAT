@@ -86,7 +86,7 @@ Google (FCM), então:
   ponta a ponta entre o servidor e o navegador; o Google não consegue ler.
 
 As chaves VAPID são geradas na primeira subida e ficam no banco (entram no backup). Para desligar o
-recurso, use `PUSH_ENABLED=false`. Quem quiser, ajusta os avisos por conversa (todas, só menções,
+recurso, use `PUSH_ENABLED=false`. Quem quiser, ajusta os avisos por conversa (todas ou
 nenhuma) no painel da conversa, e vê o estado dos avisos em **Minha conta → Notificações e
 aplicativo**.
 

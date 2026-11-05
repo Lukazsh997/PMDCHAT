@@ -58,25 +58,19 @@ export function useRealtimeSync(meId: string | undefined) {
       if (viewing && m.senderId !== meId) markRead(qc, m.conversationId, m.seq);
       if (m.senderId === meId || m.type !== 'text') return;
 
-      const mentionsMe = m.mentionsAll || m.mentions.includes(meId);
-      if (mentionsMe) void qc.invalidateQueries({ queryKey: keys.mentions });
       if (viewing) return;
 
       const summary = qc
         .getQueryData<ConversationSummary[]>(keys.list)
         ?.find((c) => c.id === m.conversationId);
-      // Conversa silenciada continua avisando quando alguém cita você.
-      if (summary && isMuted(summary) && !mentionsMe) return;
+      if (summary && isMuted(summary)) return;
       if (summary?.notificationLevel === 'none') return;
-      if (summary?.notificationLevel === 'mentions' && !mentionsMe) return;
       const who = senderName ?? 'Nova mensagem';
       const where = summary?.type === 'group' ? ` em ${summary.title}` : '';
       showNotification({
         title: m.broadcast
           ? `Comunicado${senderName ? ` de ${senderName}` : ''} para ${m.broadcast.label}`
-          : mentionsMe
-            ? `${who} mencionou você${where}`
-            : `${who}${where}`,
+          : `${who}${where}`,
         body: m.body || (m.attachments.length ? `📎 ${m.attachments[0]!.name}` : ''),
         tag: m.conversationId,
         onClick: () => void navigate(`/c/${m.conversationId}`),

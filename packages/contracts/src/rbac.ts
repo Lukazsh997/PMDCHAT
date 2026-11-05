@@ -17,7 +17,6 @@ export const PERMISSIONS = {
   'roles.assign': 'Atribuir e remover papéis',
   'audit.read': 'Consultar o registro de auditoria',
   'broadcast.send': 'Enviar comunicados em massa para unidades',
-  'messages.mention_all': 'Usar @todos em grupos grandes',
   'conversations.create_channel': 'Criar canais de aviso',
   'users.delete': 'Excluir usuários definitivamente do diretório',
   'roles.manage': 'Criar e editar papéis',
@@ -54,11 +53,7 @@ export const ROLES = {
     name: 'Comunicador',
     description:
       'Envia comunicados e cria canais de aviso para a unidade e as unidades abaixo dela',
-    permissions: [
-      'broadcast.send',
-      'messages.mention_all',
-      'conversations.create_channel',
-    ] as Permission[],
+    permissions: ['broadcast.send', 'conversations.create_channel'] as Permission[],
     scoped: true,
   },
 } as const satisfies Record<
@@ -87,7 +82,7 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
   { label: 'Papéis e auditoria', permissions: ['roles.assign', 'roles.manage', 'audit.read'] },
   {
     label: 'Comunicação',
-    permissions: ['broadcast.send', 'conversations.create_channel', 'messages.mention_all'],
+    permissions: ['broadcast.send', 'conversations.create_channel'],
   },
 ];
 

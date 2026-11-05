@@ -14,11 +14,12 @@ export const MESSAGE_RULES = {
   deletedRetentionHours: 48,
   maxAttachmentsPerMessage: 10,
   maxGroupMembers: 1000,
-  /** Em grupos até este tamanho qualquer membro usa @todos; acima, só admins do grupo ou quem tem a permissão. */
-  mentionAllFreeUpTo: 50,
 } as const;
 
-/** Reações disponíveis (conjunto fixo: leve, sem seletor de emojis completo). */
+/**
+ * Reações disponíveis (conjunto fixo: leve, sem seletor de emojis completo). Cada pessoa
+ * tem no máximo uma reação por mensagem: escolher outra troca a anterior.
+ */
 export const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '✅', '👀'] as const;
 export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
 
@@ -29,17 +30,16 @@ export interface Reaction {
 
 export type ConversationType = 'direct' | 'group';
 
-/** Quando avisar sobre uma conversa. */
-export type NotificationLevel = 'all' | 'mentions' | 'none';
+/** Quando avisar sobre uma conversa (o contador de não lidas aparece sempre). */
+export type NotificationLevel = 'all' | 'none';
 export const NOTIFICATION_LEVELS: Record<NotificationLevel, string> = {
   all: 'Todas as mensagens',
-  mentions: 'Só quando me mencionarem',
-  none: 'Nenhuma',
+  none: 'Nenhuma (só o contador de não lidas)',
 };
-/** Grupos maiores que isto avisam só menções, salvo escolha da pessoa. */
+/** Grupos maiores que isto não avisam por padrão (evita avalanche), salvo escolha da pessoa. */
 export const LARGE_GROUP_SIZE = 50;
 
-/** Nível que vale: o escolhido, ou o padrão (diretas e canais: todas; grupos grandes: menções). */
+/** Nível que vale: o escolhido, ou o padrão (diretas e canais: todas; grupos grandes: nenhuma). */
 export function effectiveNotificationLevel(c: {
   notificationSetting: NotificationLevel | null;
   type: ConversationType;
@@ -47,9 +47,7 @@ export function effectiveNotificationLevel(c: {
   isChannel: boolean;
 }): NotificationLevel {
   if (c.notificationSetting) return c.notificationSetting;
-  return c.type === 'group' && !c.isChannel && c.memberCount > LARGE_GROUP_SIZE
-    ? 'mentions'
-    : 'all';
+  return c.type === 'group' && !c.isChannel && c.memberCount > LARGE_GROUP_SIZE ? 'none' : 'all';
 }
 export type MemberRole = 'owner' | 'admin' | 'member';
 
@@ -92,8 +90,6 @@ export interface ConversationSummary {
   lastSeq: number;
   lastReadSeq: number;
   unreadCount: number;
-  /** Não lidas que mencionam você (ou @todos). */
-  unreadMentions: number;
   mutedUntil: string | null;
   /** Escolha da pessoa (null = padrão). */
   notificationSetting: NotificationLevel | null;
@@ -150,23 +146,6 @@ export interface Message {
   deletedAt: string | null;
   broadcast: BroadcastRef | null;
   reactions: Reaction[];
-  /** Pessoas mencionadas (@Nome). */
-  mentions: string[];
-  /** @todos */
-  mentionsAll: boolean;
-}
-
-/** Item da aba Menções. */
-export interface MentionItem {
-  message: Message;
-  senderName: string;
-  conversation: { id: string; type: ConversationType; title: string };
-  unread: boolean;
-}
-
-export interface MentionPage {
-  items: MentionItem[];
-  hasMore: boolean;
 }
 
 export interface MessagePage {
@@ -231,7 +210,7 @@ export const setMemberRoleSchema = z.object({ role: z.enum(['admin', 'member']) 
 export const updateMySettingsSchema = z
   .object({
     mutedUntil: z.iso.datetime({ offset: true }).nullable(),
-    notificationLevel: z.enum(['all', 'mentions', 'none']).nullable(),
+    notificationLevel: z.enum(['all', 'none']).nullable(),
   })
   .partial();
 
@@ -240,9 +219,6 @@ export const sendMessageSchema = z
     clientId: z.string().min(8).max(64),
     body: z.string().max(MESSAGE_RULES.maxBodyLength, 'Mensagem muito longa').default(''),
     attachmentIds: z.array(z.uuid()).max(MESSAGE_RULES.maxAttachmentsPerMessage).default([]),
-    /** Pessoas mencionadas; o texto precisa conter "@Nome" de cada uma. */
-    mentions: z.array(z.uuid()).max(100).default([]),
-    mentionAll: z.boolean().default(false),
   })
   .transform((v) => ({ ...v, body: v.body.replace(/\s+$/u, '').replace(/^\s*\n/u, '') }))
   .refine((v) => v.body.trim().length > 0 || v.attachmentIds.length > 0, {
@@ -257,8 +233,6 @@ export const editMessageSchema = z.object({
     .trim()
     .min(1, 'A mensagem não pode ficar vazia')
     .max(MESSAGE_RULES.maxBodyLength),
-  mentions: z.array(z.uuid()).max(100).default([]),
-  mentionAll: z.boolean().default(false),
 });
 
 export const reactionSchema = z.object({

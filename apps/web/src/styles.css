@@ -108,7 +108,7 @@
     content-visibility: auto;
     contain-intrinsic-size: auto 56px;
   }
-  /* Mensagem aberta pela busca ou pelas menções: destaque que some sozinho. */
+  /* Mensagem aberta pela busca: destaque que some sozinho. */
   .msg-focus {
     animation: msg-focus 2.4s ease-out;
     border-radius: 12px;

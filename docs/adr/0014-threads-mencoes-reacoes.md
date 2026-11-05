@@ -1,6 +1,6 @@
 # ADR 0014 — Threads, menções e reações
 
-**Status:** aceita (05/11/2026); a parte de threads foi retirada no mesmo dia (ver o fim)
+**Status:** aceita (05/11/2026); threads e menções foram retiradas no mesmo dia (ver o fim)
 
 **Decisão.**
 
@@ -21,5 +21,11 @@ A checagem no servidor impede menções forjadas por requisição direta.
 **Atualização (05/11/2026): threads retiradas.** A pedido da organização, as threads saíram do
 produto. Toda resposta volta a ser uma mensagem comum na conversa. A migração `0010` apaga
 `thread_root_id`, `reply_count` e `last_reply_at`. Respostas que já existiam passam a aparecer
-na conversa principal, na ordem em que foram enviadas, sem perda de conteúdo. Menções e reações
-continuam como descrito acima.
+na conversa principal, na ordem em que foram enviadas, sem perda de conteúdo.
+
+**Atualização (05/11/2026): menções retiradas e reação única.** As menções também saíram: "@Nome"
+volta a ser texto comum, sem sugestão, aba, contador ou aviso especial. A migração `0011` apaga
+`message_mentions` e `messages.mentions_all`, tira a permissão `messages.mention_all` dos papéis
+e converte o nível de aviso "só menções" em "nenhuma". As reações passam a ser **uma por pessoa
+em cada mensagem**: escolher outro emoji troca a anterior e tocar no mesmo retira. A chave da
+tabela vira (mensagem, pessoa); de quem tinha mais de uma, fica a mais recente.

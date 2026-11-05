@@ -1,13 +1,4 @@
-import {
-  AtSign,
-  LogOut,
-  MessagesSquare,
-  Network,
-  Search,
-  Shield,
-  UserRound,
-  WifiOff,
-} from 'lucide-react';
+import { LogOut, MessagesSquare, Network, Search, Shield, UserRound, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { Avatar, ErrorBoundary } from '@/components/ui';
@@ -46,7 +37,6 @@ export function AppShell() {
   }, [user?.id]);
   const conversations = useConversations().data ?? [];
   const unread = conversations.reduce((n, c) => n + c.unreadCount, 0);
-  const unreadMentions = conversations.reduce((n, c) => n + c.unreadMentions, 0);
   const connection = connectionStore.use((s) => s);
   const isAdmin = me.data?.permissions.includes('admin.access');
 
@@ -71,9 +61,6 @@ export function AppShell() {
           </RailLink>
           <RailLink to="/busca" label="Buscar (Ctrl+K)">
             <Search size={20} aria-hidden="true" />
-          </RailLink>
-          <RailLink to="/mencoes" label="Menções" badge={unreadMentions}>
-            <AtSign size={20} aria-hidden="true" />
           </RailLink>
           {user?.kind !== 'guest' && (
             <RailLink to="/organograma" label="Organograma">

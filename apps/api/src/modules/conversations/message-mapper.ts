@@ -8,7 +8,6 @@ export function toMessage(
     attachments?: Attachment[];
     broadcast?: BroadcastRef | null;
     reactions?: Reaction[];
-    mentions?: string[];
   } = {},
 ): Message {
   const deleted = !!row.deletedAt;
@@ -27,7 +26,5 @@ export function toMessage(
     deletedAt: row.deletedAt?.toISOString() ?? null,
     broadcast: extra.broadcast ?? null,
     reactions: deleted ? [] : (extra.reactions ?? []),
-    mentions: deleted ? [] : (extra.mentions ?? []),
-    mentionsAll: !deleted && row.mentionsAll,
   };
 }

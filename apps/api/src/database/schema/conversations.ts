@@ -24,6 +24,7 @@ import { users } from './users.js';
 export const conversationType = pgEnum('conversation_type', ['direct', 'group']);
 export const memberRole = pgEnum('member_role', ['owner', 'admin', 'member']);
 export const messageType = pgEnum('message_type', ['text', 'system']);
+/** 'mentions' ficou obsoleto com a retirada das menções (a migração 0011 converte para 'none'). */
 export const notificationLevel = pgEnum('notification_level', ['all', 'mentions', 'none']);
 
 export const conversations = pgTable(
@@ -71,7 +72,7 @@ export const conversationMembers = pgTable(
     joinedSeq: bigint({ mode: 'number' }).notNull().default(0),
     /** Entrou pela lotação (canal de unidade): a sincronização põe e tira. */
     autoJoined: boolean().notNull().default(false),
-    /** Quando avisar. Vazio = padrão (todas; em grupos com mais de 50 pessoas, só menções). */
+    /** Quando avisar. Vazio = padrão (todas; em grupos com mais de 50 pessoas, nenhuma). */
     notificationLevel: notificationLevel(),
   },
   (t) => [
@@ -102,8 +103,6 @@ export const messages = pgTable(
     purgedAt: timestamp({ withTimezone: true }),
     /** Mensagem entregue por um comunicado em massa. */
     broadcastId: uuid().references((): AnyPgColumn => broadcasts.id, { onDelete: 'set null' }),
-    /** @todos: menciona todos os membros da conversa. */
-    mentionsAll: boolean().notNull().default(false),
     // body_tsv (tsvector gerado, configuração pt_unaccent) existe só no banco: ver a
     // migração 0006. As consultas de busca usam SQL direto.
   },
@@ -144,7 +143,7 @@ export const broadcasts = pgTable(
   ],
 );
 
-/** Reações: uma linha por pessoa e emoji. */
+/** Reações: no máximo uma por pessoa em cada mensagem (outro emoji substitui). */
 export const messageReactions = pgTable(
   'message_reactions',
   {
@@ -157,24 +156,7 @@ export const messageReactions = pgTable(
     emoji: varchar({ length: 16 }).notNull(),
     createdAt: createdAt(),
   },
-  (t) => [primaryKey({ columns: [t.messageId, t.userId, t.emoji] })],
-);
-
-/** Menções a pessoas (o @todos fica em `messages.mentions_all`). Alimenta a aba Menções. */
-export const messageMentions = pgTable(
-  'message_mentions',
-  {
-    messageId: uuid()
-      .notNull()
-      .references(() => messages.id, { onDelete: 'cascade' }),
-    userId: uuid()
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-  },
-  (t) => [
-    primaryKey({ columns: [t.messageId, t.userId] }),
-    index('message_mentions_user_idx').on(t.userId),
-  ],
+  (t) => [primaryKey({ columns: [t.messageId, t.userId] })],
 );
 
 /** Histórico de edições, preservado para auditoria. */

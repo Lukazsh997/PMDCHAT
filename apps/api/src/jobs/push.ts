@@ -29,7 +29,6 @@ interface Row {
   conversation_id: string;
   sender_id: string | null;
   body: string;
-  mentions_all: boolean;
   attachment: string | null;
   sender_name: string | null;
   broadcast_label: string | null;
@@ -42,8 +41,7 @@ interface Row {
 /**
  * Decide quem recebe o push de uma mensagem e envia. Recebe quem:
  *  - não está com nenhuma aba aberta (quem está recebe pelo tempo real);
- *  - tem nível de aviso que inclui esta mensagem ("só menções" exige ser citado);
- *  - não silenciou a conversa, a menos que tenha sido citado.
+ *  - não desligou os avisos da conversa (nível "nenhuma") nem a silenciou.
  */
 export async function deliverPush(
   ctx: { db: Database; redis: Redis },
@@ -52,7 +50,7 @@ export async function deliverPush(
 ): Promise<{ sent: number; skipped: number; removed: number }> {
   const [m] = (await ctx.db.execute(sql`
     select m.id, m.conversation_id, m.sender_id, m.body,
-           m.mentions_all, s.display_name as sender_name, b.unit_name as broadcast_label,
+           s.display_name as sender_name, b.unit_name as broadcast_label,
            c.type, c.name, c.is_channel,
            (select count(*) from conversation_members x where x.conversation_id = c.id) as member_count,
            (select f.original_name from message_attachments a join files f on f.id = a.file_id
@@ -66,8 +64,7 @@ export async function deliverPush(
   if (!m || !job.userIds.length) return { sent: 0, skipped: job.userIds.length, removed: 0 };
 
   const members = (await ctx.db.execute(sql`
-    select cm.user_id, cm.muted_until, cm.notification_level,
-           exists (select 1 from message_mentions mm where mm.message_id = ${m.id} and mm.user_id = cm.user_id) as mentioned
+    select cm.user_id, cm.muted_until, cm.notification_level
       from conversation_members cm
      where cm.conversation_id = ${m.conversation_id}
        and cm.user_id in (${sql.join(
@@ -77,22 +74,19 @@ export async function deliverPush(
   `)) as unknown as {
     user_id: string;
     muted_until: Date | null;
-    notification_level: NotificationLevel | null;
-    mentioned: boolean;
+    notification_level: NotificationLevel | 'mentions' | null;
   }[];
 
   const targets: string[] = [];
   for (const r of members) {
-    const mentioned = r.mentioned || m.mentions_all;
     const level = effectiveNotificationLevel({
-      notificationSetting: r.notification_level,
+      notificationSetting: r.notification_level === 'mentions' ? 'none' : r.notification_level,
       type: m.type,
       memberCount: Number(m.member_count),
       isChannel: m.is_channel,
     });
     if (level === 'none') continue;
-    if (level === 'mentions' && !mentioned) continue;
-    if (r.muted_until && new Date(r.muted_until) > new Date() && !mentioned) continue;
+    if (r.muted_until && new Date(r.muted_until) > new Date()) continue;
     if (await hasLiveConnection(ctx.redis, r.user_id)) continue;
     targets.push(r.user_id);
   }
@@ -106,14 +100,11 @@ export async function deliverPush(
   const who = m.sender_name ?? 'Nova mensagem';
   const where = m.type === 'group' ? ` em ${m.name ?? 'Grupo'}` : '';
   const text = m.body || (m.attachment ? `📎 ${m.attachment}` : '');
-  const payloadFor = (userId: string): PushPayload => {
-    const mentioned = m.mentions_all || members.some((x) => x.user_id === userId && x.mentioned);
+  const payloadFor = (): PushPayload => {
     return {
       title: m.broadcast_label
         ? `Comunicado de ${who} para ${m.broadcast_label}`
-        : mentioned
-          ? `${who} mencionou você${where}`
-          : `${who}${where}`,
+        : `${who}${where}`,
       // A mensagem inteira não vai para o serviço de push: só o começo.
       body: text.length > 140 ? `${text.slice(0, 137)}…` : text,
       url: `/c/${m.conversation_id}`,
@@ -125,7 +116,7 @@ export async function deliverPush(
   const gone: string[] = [];
   const ok: string[] = [];
   for (const sub of subs) {
-    const r = await send(sub, payloadFor(sub.userId));
+    const r = await send(sub, payloadFor());
     if (r.ok) {
       sent++;
       ok.push(sub.id);

@@ -73,7 +73,7 @@ describe('papéis editáveis', () => {
     // Tira a permissão: a próxima requisição já não pode.
     await call(ctx, 'PATCH', '/admin/roles/gestor_de_ouvidoria', {
       cookie: a.cookie,
-      body: { permissions: ['messages.mention_all'] },
+      body: { permissions: ['broadcast.send'] },
     });
     expect(
       (
