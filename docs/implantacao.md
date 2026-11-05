@@ -72,6 +72,32 @@ política `OverrideSecurityRestrictionsOnInsecureOrigin`, distribuída por GPO:
 Até lá, o login, a navegação e as funções desta fase funcionam normalmente; apenas os recursos
 acima ficam bloqueados pelo navegador.
 
+## Web Push (avisos com a aba fechada)
+
+Com a política acima, cada pessoa que permitir notificações passa a receber avisos também com a
+aba do sistema fechada, desde que o Chrome esteja aberto. O envio passa pelo serviço de push do
+Google (FCM), então:
+
+- a **VM** precisa sair para a internet em `https://fcm.googleapis.com` (porta 443). Se a saída for
+  por proxy, informe-o em `PUSH_PROXY` no `.env` (ex.: `http://proxy.orgao.local:3128`);
+- as **estações** precisam alcançar o Google (o próprio Chrome mantém essa conexão);
+- `PUSH_SUBJECT` deve ser um contato da organização (`mailto:ti@orgao.gov.br`): o protocolo exige;
+- o texto enviado ao serviço do Google é só o começo da mensagem (até 140 caracteres), cifrado de
+  ponta a ponta entre o servidor e o navegador; o Google não consegue ler.
+
+As chaves VAPID são geradas na primeira subida e ficam no banco (entram no backup). Para desligar o
+recurso, use `PUSH_ENABLED=false`. Quem quiser, ajusta os avisos por conversa (todas, só menções,
+nenhuma) no painel da conversa, e vê o estado dos avisos em **Minha conta → Notificações e
+aplicativo**.
+
+## Aplicativo instalável (PWA)
+
+Com a mesma política do Chrome, o sistema pode ser instalado como aplicativo: janela própria e
+ícone na barra de tarefas, sem instalador. Em **Minha conta → Notificações e aplicativo** aparece o
+botão **Instalar** quando o Chrome oferece; também pelo menu ⋮ → _Transmitir, salvar e
+compartilhar → Instalar página como app_. Para instalar em todas as estações, use a política
+`WebAppInstallForceList` do Chrome com o endereço do sistema.
+
 ## Operação
 
 | Tarefa                       | Comando                                                               |
@@ -99,6 +125,11 @@ conseguiu iniciar. O `install.sh` mostra as últimas linhas do log; manualmente:
 | `Configuração inválida: APP_ORIGINS…`                                          | Endereço sem `http://` no `.env`. Corrija para `APP_ORIGINS=http://192.168.0.10` e rode `docker compose up -d`                                                                            |
 | `exec api-entrypoint failed: Permission denied` ou `No such file or directory` | Script sem permissão de execução ou com quebras de linha do Windows, numa imagem antiga. Atualize o código e rode `docker compose build --no-cache` (a imagem atual corrige isso sozinha) |
 | `ECONNREFUSED … 5432` ou `password authentication failed`                      | O volume do banco foi criado com outra senha. Se ainda não há dados: `docker compose down -v` e instale de novo                                                                           |
+
+**Avisos com a aba fechada não chegam:** em _Minha conta_, o estado deve ser "Ativo". Se aparecer
+"Indisponível neste endereço", falta a política do Chrome. Se a política existe mas nada chega,
+veja `docker compose logs worker | grep push`: falhas de conexão indicam que a VM não alcança
+`fcm.googleapis.com` (libere a saída ou configure `PUSH_PROXY`).
 
 Para editar o projeto no Windows, mantenha as quebras de linha Unix (LF). O arquivo
 `.gitattributes` já faz isso no Git; no editor, use LF para `.sh`, `.env` e `.conf`.
