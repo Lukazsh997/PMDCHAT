@@ -45,6 +45,23 @@ export function ConversationView({ conversationId }: { conversationId: string })
   // A thread aberta fica na URL (?thread=…): dá para chegar nela pela aba Menções.
   const [params, setParams] = useSearchParams();
   const threadId = params.get('thread');
+  // Mensagem a mostrar (?m=id&s=seq), vinda da busca ou das menções.
+  const focusId = params.get('m');
+  const focusSeq = Number(params.get('s')) || null;
+  const { jumpTo } = messages;
+  useEffect(() => {
+    if (focusSeq) void jumpTo(focusSeq).catch(() => undefined);
+  }, [focusSeq, jumpTo]);
+  const clearFocus = () =>
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        next.delete('m');
+        next.delete('s');
+        return next;
+      },
+      { replace: true },
+    );
   const openThread = (id: string | null) => {
     setShowInfo(false);
     setParams(
@@ -202,7 +219,12 @@ export function ConversationView({ conversationId }: { conversationId: string })
           <MessageList
             items={items}
             hasMore={messages.data?.hasMore ?? false}
+            hasNewer={messages.data?.hasNewer ?? false}
             loadOlder={messages.loadOlder}
+            loadNewer={messages.loadNewer}
+            onJumpLatest={() => void messages.jumpToLatest()}
+            focusId={threadId ? null : focusId}
+            onFocused={clearFocus}
             detail={d}
             meId={meId}
             actions={actions}
@@ -236,7 +258,11 @@ export function ConversationView({ conversationId }: { conversationId: string })
                 .catch((e: Error) => toast(e.message, 'error'));
               setEditing(null);
             }}
-            onSend={(body, attachments, extras) => void send(body, attachments, extras)}
+            onSend={async (body, attachments, extras) => {
+              // Lendo no meio da conversa: volta ao fim para ver a própria mensagem.
+              if (messages.data?.hasNewer) await messages.jumpToLatest();
+              void send(body, attachments, extras);
+            }}
             mentionables={mentionables}
             allowMentionAll={allowMentionAll}
           />

@@ -9,7 +9,7 @@ import {
   type Reaction,
   type ThreadPage,
 } from '@plataforma/contracts';
-import { and, asc, count, desc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { AppException } from '../../common/app-exception.js';
 import { DomainEvents } from '../../common/events/domain-events.js';
 import { DB, type Database } from '../../database/database.js';
@@ -46,7 +46,7 @@ export class MessagesService {
   async list(
     userId: string,
     conversationId: string,
-    q: { before?: number; after?: number; limit: number },
+    q: { before?: number; after?: number; around?: number; limit: number },
   ): Promise<MessagePage> {
     const { member } = await this.conversations.requireMember(userId, conversationId);
     const base = [
@@ -56,6 +56,32 @@ export class MessagesService {
       isNull(messages.threadRootId),
     ];
     let rows: MessageRow[];
+    if (q.around !== undefined) {
+      // Abre a conversa no meio: metade antes da mensagem procurada, metade a partir dela.
+      const half = Math.ceil(q.limit / 2);
+      const [older, newer] = await Promise.all([
+        this.db
+          .select()
+          .from(messages)
+          .where(and(...base, lt(messages.seq, q.around)))
+          .orderBy(desc(messages.seq))
+          .limit(half + 1),
+        this.db
+          .select()
+          .from(messages)
+          .where(and(...base, gte(messages.seq, q.around)))
+          .orderBy(asc(messages.seq))
+          .limit(half + 1),
+      ]);
+      return {
+        items: await this.withAttachments([
+          ...older.slice(0, half).reverse(),
+          ...newer.slice(0, half),
+        ]),
+        hasMore: older.length > half,
+        hasNewer: newer.length > half,
+      };
+    }
     if (q.after !== undefined) {
       rows = await this.db
         .select()
@@ -63,8 +89,13 @@ export class MessagesService {
         .where(and(...base, gt(messages.seq, q.after)))
         .orderBy(asc(messages.seq))
         .limit(q.limit + 1);
+      // Aqui "hasMore" fala das mais novas, na direção pedida.
       const hasMore = rows.length > q.limit;
-      return { items: await this.withAttachments(rows.slice(0, q.limit)), hasMore };
+      return {
+        items: await this.withAttachments(rows.slice(0, q.limit)),
+        hasMore,
+        hasNewer: hasMore,
+      };
     }
     rows = await this.db
       .select()
@@ -248,7 +279,7 @@ export class MessagesService {
          and m.sender_id is distinct from ${userId}
          and (m.mentions_all or exists (
                select 1 from message_mentions mm where mm.message_id = m.id and mm.user_id = ${userId}))
-         ${q.before ? sql`and m.created_at < ${new Date(q.before)}` : sql``}
+         ${q.before ? sql`and m.created_at < ${new Date(q.before).toISOString()}::timestamptz` : sql``}
        order by m.created_at desc
        limit ${q.limit + 1}
     `)) as unknown as {

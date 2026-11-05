@@ -45,6 +45,8 @@ export interface ChatMessage extends Message {
 export interface MessagesState {
   items: ChatMessage[];
   hasMore: boolean;
+  /** Aberta no meio (pela busca ou menções): faltam as mais novas. */
+  hasNewer?: boolean;
 }
 
 /** Conversa aberta agora nesta aba (para não notificar nem contar como não lida). */
@@ -109,7 +111,46 @@ export function useMessages(id: string) {
     );
   }, [qc, id]);
 
-  return { ...query, loadOlder };
+  /** Mensagens mais novas, quando a conversa foi aberta no meio. */
+  const loadNewer = useCallback(async () => {
+    const state = qc.getQueryData<MessagesState>(keys.messages(id));
+    const newest = state?.items.findLast((m) => !m.status);
+    if (!state?.hasNewer || !newest) return;
+    const page = await api<MessagePage>(
+      'GET',
+      `/conversations/${id}/messages?limit=50&after=${newest.seq}`,
+    );
+    qc.setQueryData<MessagesState>(
+      keys.messages(id),
+      (s) => s && { ...s, items: merge(s.items, page.items), hasNewer: !!page.hasNewer },
+    );
+  }, [qc, id]);
+
+  /** Abre a conversa ao redor de uma mensagem (se ela ainda não estiver carregada). */
+  const jumpTo = useCallback(
+    async (seq: number) => {
+      const state = qc.getQueryData<MessagesState>(keys.messages(id));
+      if (state?.items.some((m) => m.seq === seq)) return;
+      const page = await api<MessagePage>(
+        'GET',
+        `/conversations/${id}/messages?limit=50&around=${seq}`,
+      );
+      qc.setQueryData<MessagesState>(keys.messages(id), {
+        items: page.items,
+        hasMore: page.hasMore,
+        hasNewer: !!page.hasNewer,
+      });
+    },
+    [qc, id],
+  );
+
+  /** Volta para as mais recentes (depois de ter aberto no meio). */
+  const jumpToLatest = useCallback(
+    () => qc.resetQueries({ queryKey: keys.messages(id), exact: true }),
+    [qc, id],
+  );
+
+  return { ...query, loadOlder, loadNewer, jumpTo, jumpToLatest };
 }
 
 /** Une listas de mensagens sem duplicar (por id ou clientId), ordenadas por sequência. */
@@ -148,10 +189,13 @@ export function upsertMessage(qc: QueryClient, m: ChatMessage): void {
     );
     return;
   }
-  qc.setQueryData<MessagesState>(
-    keys.messages(m.conversationId),
-    (s) => s && { ...s, items: merge(s.items, [m]) },
-  );
+  qc.setQueryData<MessagesState>(keys.messages(m.conversationId), (s) => {
+    if (!s) return s;
+    // Aberta no meio: mensagens novas chegam quando a pessoa voltar ao fim.
+    const isNew = !s.items.some((x) => x.id === m.id || (x.clientId && x.clientId === m.clientId));
+    if (s.hasNewer && isNew) return s;
+    return { ...s, items: merge(s.items, [m]) };
+  });
   if (!m.status) {
     qc.setQueryData<ThreadState>(keys.thread(m.id), (t) => t && { ...t, root: m });
   }

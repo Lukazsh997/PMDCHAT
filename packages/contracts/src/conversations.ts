@@ -143,7 +143,10 @@ export interface MentionPage {
 
 export interface MessagePage {
   items: Message[];
+  /** Há mensagens mais antigas. */
   hasMore: boolean;
+  /** Há mensagens mais novas (página aberta no meio da conversa, ex.: pela busca). */
+  hasNewer?: boolean;
 }
 
 export const createDirectSchema = z.object({ userId: z.uuid() });
@@ -271,4 +274,52 @@ export interface BroadcastScopes {
 
 export interface BroadcastPreview {
   recipientCount: number;
+}
+
+/* --------------------------------- Busca -------------------------------- */
+
+export const searchMessagesSchema = z.object({
+  q: z.string().trim().min(2, 'Digite ao menos 2 letras').max(200),
+  conversationId: z.uuid().optional(),
+  senderId: z.uuid().optional(),
+  /** Período (datas ISO, inclusive). */
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+  /** Só mensagens com anexo. */
+  withFiles: z.enum(['1']).optional(),
+  /** Paginação: mensagens enviadas antes deste instante. */
+  before: z.iso.datetime({ offset: true }).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+export type SearchMessagesQuery = z.input<typeof searchMessagesSchema>;
+
+/** Trecho com os termos encontrados entre os marcadores abaixo (texto puro, nunca HTML). */
+export const SEARCH_MARK = { start: '\u2063[', end: ']\u2063' } as const;
+
+export interface SearchMessageHit {
+  message: Message;
+  conversation: { id: string; type: ConversationType; title: string };
+  senderName: string;
+  snippet: string;
+}
+
+export interface SearchMessagesPage {
+  items: SearchMessageHit[];
+  hasMore: boolean;
+}
+
+export const searchFilesSchema = z.object({
+  q: z.string().trim().min(2).max(200),
+  conversationId: z.uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export interface SearchFileHit {
+  file: Attachment;
+  messageId: string;
+  seq: number;
+  threadRootId: string | null;
+  conversation: { id: string; type: ConversationType; title: string };
+  senderName: string;
+  createdAt: string;
 }

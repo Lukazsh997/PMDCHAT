@@ -11,6 +11,7 @@ import { RequireAuth } from './features/auth/RequireAuth';
 import { ChatPage } from './features/chat/ChatPage';
 import { MentionsPage } from './features/chat/MentionsPage';
 import { OrgDirectoryPage } from './features/org/OrgDirectoryPage';
+import { SearchPage } from './features/search/SearchPage';
 import { AppShell } from './features/shell/AppShell';
 
 export function App() {
@@ -29,6 +30,7 @@ export function App() {
           <Route path="c/:conversationId" element={<ChatPage />} />
           <Route path="organograma" element={<OrgDirectoryPage />} />
           <Route path="mencoes" element={<MentionsPage />} />
+          <Route path="busca" element={<SearchPage />} />
           <Route
             path="conta"
             element={

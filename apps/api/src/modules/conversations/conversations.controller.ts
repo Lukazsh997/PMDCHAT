@@ -23,6 +23,10 @@ import {
   type MentionPage,
   type MessagePage,
   reactionSchema,
+  type SearchFileHit,
+  searchFilesSchema,
+  type SearchMessagesPage,
+  searchMessagesSchema,
   sendMessageSchema,
   type ThreadPage,
   setMemberRoleSchema,
@@ -37,11 +41,13 @@ import type { AuthContext } from '../auth/index.js';
 import { PermissionService, requestGrants } from '../rbac/index.js';
 import { ConversationsService } from './conversations.service.js';
 import { MessagesService } from './messages.service.js';
+import { SearchService } from './search.service.js';
 
 const id = new ZodPipe(z.uuid());
 const pageQuery = z.object({
   before: z.coerce.number().int().min(0).optional(),
   after: z.coerce.number().int().min(0).optional(),
+  around: z.coerce.number().int().min(0).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
@@ -56,6 +62,7 @@ export class ConversationsController {
     private readonly conversations: ConversationsService,
     private readonly messages: MessagesService,
     private readonly permissions: PermissionService,
+    private readonly search: SearchService,
   ) {}
 
   @Get('conversations')
@@ -186,6 +193,22 @@ export class ConversationsController {
     @Body(new ZodPipe(reactionSchema)) b: { emoji: string },
   ): Promise<Message> {
     return this.messages.react(auth, mid, b.emoji, false);
+  }
+
+  @Get('search/messages')
+  searchMessages(
+    @CurrentAuth() auth: AuthContext,
+    @Query(new ZodPipe(searchMessagesSchema)) q: z.output<typeof searchMessagesSchema>,
+  ): Promise<SearchMessagesPage> {
+    return this.search.searchMessages(auth.user.id, q);
+  }
+
+  @Get('search/files')
+  searchFiles(
+    @CurrentAuth() auth: AuthContext,
+    @Query(new ZodPipe(searchFilesSchema)) q: z.output<typeof searchFilesSchema>,
+  ): Promise<SearchFileHit[]> {
+    return this.search.searchFiles(auth.user.id, q);
   }
 
   @Get('mentions')

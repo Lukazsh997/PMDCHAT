@@ -1,6 +1,15 @@
-import { AtSign, LogOut, MessagesSquare, Network, Shield, UserRound, WifiOff } from 'lucide-react';
-import type { ReactNode } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router';
+import {
+  AtSign,
+  LogOut,
+  MessagesSquare,
+  Network,
+  Search,
+  Shield,
+  UserRound,
+  WifiOff,
+} from 'lucide-react';
+import { type ReactNode, useEffect } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { Avatar, ErrorBoundary } from '@/components/ui';
 import { APP_NAME } from '@/lib/config';
 import { connectionStore } from '@/lib/socket';
@@ -15,6 +24,18 @@ import { useRealtimeSync } from '../chat/useRealtimeSync';
 export function AppShell() {
   const me = useMe();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  // Ctrl+K (ou ⌘K) abre a busca de qualquer tela.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        void navigate('/busca');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navigate]);
   const logout = useLogout();
   const user = me.data?.user;
   useRealtimeSync(user?.id);
@@ -42,6 +63,9 @@ export function AppShell() {
           <span className="sr-only">{APP_NAME}</span>
           <RailLink to="/" label="Conversas" badge={unread}>
             <MessagesSquare size={20} aria-hidden="true" />
+          </RailLink>
+          <RailLink to="/busca" label="Buscar (Ctrl+K)">
+            <Search size={20} aria-hidden="true" />
           </RailLink>
           <RailLink to="/mencoes" label="Menções" badge={unreadMentions}>
             <AtSign size={20} aria-hidden="true" />

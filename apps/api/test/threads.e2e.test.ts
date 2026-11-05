@@ -205,3 +205,17 @@ describe('menções', () => {
     expect(silent.body!.mentionsAll).toBe(false);
   });
 });
+
+describe('aba Menções', () => {
+  it('pagina pelas mais antigas', async () => {
+    const { ana, bia, g } = await group();
+    for (let i = 0; i < 3; i++)
+      await send(ana.cookie, g.id, { body: `@Bia Souza item ${i}`, mentions: [bia.user.id] });
+    const p1 = (await call(ctx, 'GET', '/mentions?limit=2', { cookie: bia.cookie })).body!;
+    expect(p1.hasMore).toBe(true);
+    const before = encodeURIComponent(p1.items[1].message.createdAt);
+    const p2 = await call(ctx, 'GET', `/mentions?limit=2&before=${before}`, { cookie: bia.cookie });
+    expect(p2.status).toBe(200);
+    expect(p2.body!.items).toHaveLength(1);
+  });
+});

@@ -34,14 +34,26 @@ export interface MessageActions {
 export function MessageList({
   items,
   hasMore,
+  hasNewer = false,
   loadOlder,
+  loadNewer,
+  onJumpLatest,
+  focusId,
+  onFocused,
   detail,
   meId,
   actions,
 }: {
   items: ChatMessage[];
   hasMore: boolean;
+  /** Aberta no meio da conversa: há mensagens mais novas a carregar. */
+  hasNewer?: boolean;
   loadOlder: () => Promise<void>;
+  loadNewer?: () => Promise<void>;
+  onJumpLatest?: () => void;
+  /** Mensagem a mostrar e destacar (vinda da busca ou das menções). */
+  focusId?: string | null;
+  onFocused?: () => void;
   detail: ConversationDetail | undefined;
   meId: string;
   actions: MessageActions;
@@ -50,6 +62,13 @@ export function MessageList({
   const now = useNow();
   const [atBottom, setAtBottom] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingNewer = useRef(false);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  useEffect(() => {
+    if (!highlight) return;
+    const t = window.setTimeout(() => setHighlight(null), 2600);
+    return () => window.clearTimeout(t);
+  }, [highlight]);
   const prevHeight = useRef<number | null>(null);
   const content = useRef<HTMLOListElement>(null);
   const stick = useRef(true);
@@ -71,6 +90,7 @@ export function MessageList({
       return;
     }
     const mine = items.at(-1)?.senderId === meId;
+    if (focusId) return;
     if (stick.current || mine) {
       stick.current = true;
       el.scrollTop = el.scrollHeight;
@@ -78,11 +98,23 @@ export function MessageList({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só quando muda a última mensagem
   }, [lastId]);
 
+  // Leva até a mensagem procurada e a destaca.
+  useLayoutEffect(() => {
+    if (!focusId) return;
+    const row = content.current?.querySelector<HTMLElement>(`[data-message-id="${focusId}"]`);
+    if (!row) return;
+    stick.current = false;
+    row.scrollIntoView({ block: 'center' });
+    setHighlight(focusId);
+    onFocused?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reage à mensagem procurada e ao que foi carregado
+  }, [focusId, items.length]);
+
   // Imagens e anexos mudam a altura depois de carregar: quem estava no fim continua no fim.
   useEffect(() => {
     const el = scroller.current;
     if (!el || !content.current) return;
-    el.scrollTop = el.scrollHeight;
+    if (!focusId) el.scrollTop = el.scrollHeight;
     const ro = new ResizeObserver(() => {
       if (stick.current && prevHeight.current === null) el.scrollTop = el.scrollHeight;
     });
@@ -94,8 +126,12 @@ export function MessageList({
     const el = scroller.current;
     if (!el) return;
     const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    stick.current = bottom;
-    setAtBottom(bottom);
+    stick.current = bottom && !hasNewer;
+    setAtBottom(bottom && !hasNewer);
+    if (bottom && hasNewer && loadNewer && !loadingNewer.current) {
+      loadingNewer.current = true;
+      await loadNewer().finally(() => (loadingNewer.current = false));
+    }
     if (el.scrollTop < 200 && hasMore && !loadingOlder) {
       setLoadingOlder(true);
       prevHeight.current = el.scrollHeight;
@@ -159,6 +195,7 @@ export function MessageList({
                     actions={actions}
                     now={now}
                     people={people}
+                    highlight={highlight === m.id}
                   />
                 )}
               </Fragment>
@@ -170,7 +207,12 @@ export function MessageList({
         <button
           type="button"
           onClick={() =>
-            scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' })
+            hasNewer && onJumpLatest
+              ? onJumpLatest()
+              : scroller.current?.scrollTo({
+                  top: scroller.current.scrollHeight,
+                  behavior: 'smooth',
+                })
           }
           className="absolute right-5 bottom-4 flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-md hover:bg-paper"
           aria-label="Ir para as mensagens mais recentes"
@@ -199,6 +241,7 @@ export function Bubble({
   now,
   people,
   inThread = false,
+  highlight = false,
 }: {
   now: number;
   m: ChatMessage;
@@ -211,6 +254,8 @@ export function Bubble({
   people: PeopleIndex;
   /** Dentro do painel da thread: sem botão de responder nem resumo da thread. */
   inThread?: boolean;
+  /** Mensagem aberta pela busca ou pelas menções. */
+  highlight?: boolean;
 }) {
   const deleted = !!m.deletedAt;
   // Só quem enviou, e só nos primeiros minutos (contados pelo relógio do servidor).
@@ -250,7 +295,7 @@ export function Bubble({
   return (
     <li
       data-message-id={m.id}
-      className={`msg-row group flex flex-col ${mine ? 'items-end' : 'items-start'} ${continued ? 'mt-0.5' : 'mt-2.5'}`}
+      className={`msg-row group flex flex-col ${mine ? 'items-end' : 'items-start'} ${continued ? 'mt-0.5' : 'mt-2.5'} ${highlight ? 'msg-focus' : ''}`}
     >
       <div
         className={`flex max-w-[min(80%,42rem)] items-start gap-1 ${mine ? 'flex-row-reverse' : ''}`}
