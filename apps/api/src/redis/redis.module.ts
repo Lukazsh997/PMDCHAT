@@ -10,6 +10,7 @@ export function createRedis(url: string): Redis {
     maxRetriesPerRequest: 3,
     enableAutoPipelining: true,
     lazyConnect: false,
+    showFriendlyErrorStack: true,
   });
 }
 

@@ -11,7 +11,29 @@ export type AuditAction =
   | 'auth.session_revoked'
   | 'auth.password_changed'
   | 'auth.password_reset'
-  | 'user.created';
+  | 'auth.mfa_enabled'
+  | 'auth.mfa_disabled'
+  | 'auth.mfa_failed'
+  | 'auth.mfa_reset'
+  | 'user.created'
+  | 'user.updated'
+  | 'user.status_changed'
+  | 'user.deleted'
+  | 'user.avatar_changed'
+  | 'user.avatar_removed'
+  | 'role.assigned'
+  | 'role.removed'
+  | 'org_unit.created'
+  | 'org_unit.updated'
+  | 'org_unit.deleted'
+  | 'conversation.created'
+  | 'conversation.updated'
+  | 'conversation.members_added'
+  | 'conversation.member_removed'
+  | 'message.deleted'
+  | 'message.deleted_by_moderator'
+  | 'file.rejected'
+  | 'broadcast.sent';
 
 export interface AuditEntry {
   action: AuditAction;

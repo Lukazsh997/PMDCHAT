@@ -41,7 +41,7 @@ async function main(): Promise<void> {
     async (job) => {
       const handler = maintenanceJobs[job.name as MaintenanceJobName];
       if (!handler) throw new Error(`Tarefa desconhecida: ${job.name}`);
-      return handler(db);
+      return handler({ db, filesDir: config.FILES_DIR });
     },
     { connection, concurrency: 1 },
   );

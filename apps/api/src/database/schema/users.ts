@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  index,
   integer,
   pgEnum,
   pgTable,
@@ -11,9 +12,11 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, updatedAt } from './_common.js';
+import { orgUnits } from './org.js';
 
 export const userStatus = pgEnum('user_status', ['active', 'blocked', 'disabled']);
 export const authSource = pgEnum('auth_source', ['local', 'ldap']);
+export const userKind = pgEnum('user_kind', ['member', 'guest']);
 
 export const users = pgTable(
   'users',
@@ -27,13 +30,15 @@ export const users = pgTable(
     authSource: authSource().notNull().default('local'),
     /** objectGUID do Active Directory (fase 3). */
     externalId: varchar({ length: 128 }),
-    /**
-     * Provisório até o módulo RBAC (fase 1): concede acesso administrativo total.
-     * Será substituído por uma atribuição do papel "Super administrador".
-     */
-    isSuperAdmin: boolean().notNull().default(false),
+    kind: userKind().notNull().default('member'),
+    /** Lotação principal. */
+    orgUnitId: uuid().references(() => orgUnits.id, { onDelete: 'set null' }),
+    /** Convidados: data em que o acesso expira. */
+    accessExpiresAt: timestamp({ withTimezone: true }),
     mustChangePassword: boolean().notNull().default(false),
     lastLoginAt: timestamp({ withTimezone: true }),
+    /** Foto de perfil: caminho relativo em FILES_DIR (avatars/…). */
+    avatarKey: varchar({ length: 255 }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: timestamp({ withTimezone: true }),
@@ -43,6 +48,8 @@ export const users = pgTable(
     uniqueIndex('users_email_uq')
       .on(sql`lower(${t.email})`)
       .where(sql`${t.email} is not null`),
+    index('users_org_unit_idx').on(t.orgUnitId),
+    index('users_name_trgm_idx').using('gin', sql`lower(${t.displayName}) gin_trgm_ops`),
     uniqueIndex('users_external_id_uq')
       .on(t.externalId)
       .where(sql`${t.externalId} is not null`),
@@ -58,6 +65,9 @@ export const userCredentials = pgTable('user_credentials', {
   passwordChangedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   failedAttempts: integer().notNull().default(0),
   lockedUntil: timestamp({ withTimezone: true }),
+  /** Segredo TOTP cifrado com APP_SECRET (AES-256-GCM). */
+  mfaSecretEnc: text(),
+  mfaEnabledAt: timestamp({ withTimezone: true }),
   updatedAt: updatedAt(),
 });
 

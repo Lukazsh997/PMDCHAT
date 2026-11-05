@@ -8,6 +8,41 @@
       "when": 1793751123729,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793811772452,
+      "tag": "0001_fase1_tabelas",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793811773065,
+      "tag": "0002_fase1_dados",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793811778701,
+      "tag": "0003_fase1_remove_super_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793885090913,
+      "tag": "0004_fase1_organograma_comunicados",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793888424403,
+      "tag": "0005_fase1_sem_moderador",
+      "breakpoints": true
     }
   ]
 }

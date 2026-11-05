@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { DOMAIN_EVENTS } from '../../common/events/tokens.js';
 import type { SessionDevice, SessionInfo } from '@plataforma/contracts';
 import { and, eq, gt, isNull, ne } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
@@ -7,6 +8,7 @@ import { APP_CONFIG, type AppConfig } from '../../config/config.js';
 import { DB, type Database } from '../../database/database.js';
 import { sessions } from '../../database/schema/index.js';
 import { REDIS } from '../../redis/redis.module.js';
+import type { DomainEvents } from '../../common/events/domain-events.js';
 import type { ActiveSession } from './auth.types.js';
 
 const TOUCH_INTERVAL_MS = 60_000;
@@ -30,6 +32,8 @@ export class SessionService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(DB) private readonly db: Database,
     @Inject(REDIS) private readonly redis: Redis,
+    /** Opcional: a CLI não tem conexões em tempo real para avisar. */
+    @Optional() @Inject(DOMAIN_EVENTS) private readonly events?: DomainEvents,
   ) {}
 
   async create(input: {
@@ -74,6 +78,11 @@ export class SessionService {
     return { token, session };
   }
 
+  /** A sessão ainda existe? (usado pelo tempo real para derrubar conexões revogadas) */
+  async isAlive(tokenHash: string): Promise<boolean> {
+    return (await this.redis.exists(sessionKey(tokenHash))) === 1;
+  }
+
   /** Valida o token do cookie e renova a expiração por inatividade. */
   async validate(token: string): Promise<ActiveSession | null> {
     if (!token || token.length > 128) return null;
@@ -112,10 +121,16 @@ export class SessionService {
       .del(sessionKey(tokenHash))
       .srem(userSessionsKey(userId), tokenHash)
       .exec();
-    await this.db
+    const rows = await this.db
       .update(sessions)
       .set({ revokedAt: new Date(), revokedReason: reason })
-      .where(and(eq(sessions.tokenHash, tokenHash), isNull(sessions.revokedAt)));
+      .where(and(eq(sessions.tokenHash, tokenHash), isNull(sessions.revokedAt)))
+      .returning({ id: sessions.id });
+    this.notifyRevoked(rows.map((r) => r.id));
+  }
+
+  private notifyRevoked(sessionIds: string[]): void {
+    if (sessionIds.length) this.events?.emit('session.revoked', { sessionIds });
   }
 
   /** Encerra uma sessão específica do próprio usuário. Retorna `false` se não existir. */
@@ -147,10 +162,12 @@ export class SessionService {
     }
     const conditions = [eq(sessions.userId, userId), isNull(sessions.revokedAt)];
     if (exceptTokenHash) conditions.push(ne(sessions.tokenHash, exceptTokenHash));
-    await this.db
+    const rows = await this.db
       .update(sessions)
       .set({ revokedAt: new Date(), revokedReason: reason })
-      .where(and(...conditions));
+      .where(and(...conditions))
+      .returning({ id: sessions.id });
+    this.notifyRevoked(rows.map((r) => r.id));
     return targets.length;
   }
 

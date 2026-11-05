@@ -49,19 +49,29 @@ jobs:
     needs: check
     steps:
       - uses: actions/checkout@v5
-      - name: Subir a plataforma completa (como na VM)
+      - name: Subir a plataforma completa (como na VM, com antivírus)
         run: |
           cp .env.example .env
           sed -i 's|^APP_ORIGINS=.*|APP_ORIGINS=http://localhost|' .env
-          docker compose up -d --build --wait --wait-timeout 240
-      - name: Verificar saúde e login pelo Nginx
+          docker compose up -d --build --wait --wait-timeout 600
+      - name: Login, troca de senha e anexos pelo Nginx
         run: |
+          set -e
+          H='content-type: application/json'
+          O='origin: http://localhost'
           curl -fsS http://localhost/api/v1/health
           curl -fsS http://localhost/ | grep -q '<div id="root">'
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost/api/v1/auth/login \
-            -H 'content-type: application/json' -H 'origin: http://localhost' \
-            -d '{"username":"admin","password":"TroqueNoPrimeiroAcesso2026"}')
-          test "$code" = 200
+          curl -fsS -c jar -H "$H" -H "$O" -d '{"username":"admin","password":"TroqueNoPrimeiroAcesso2026"}' \
+            http://localhost/api/v1/auth/login > /dev/null
+          curl -fsS -b jar -c jar -H "$H" -H "$O" -o /dev/null -w '%{http_code}\n' \
+            -d '{"currentPassword":"TroqueNoPrimeiroAcesso2026","newPassword":"NovaSenhaDoCI2026"}' \
+            http://localhost/api/v1/auth/password
+          echo 'documento comum' > comum.txt
+          code=$(curl -s -b jar -H "$O" -o /dev/null -w '%{http_code}' -F file=@comum.txt http://localhost/api/v1/files)
+          echo "upload comum: $code"; test "$code" = 201
+          printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > eicar.txt
+          code=$(curl -s -b jar -H "$O" -o resp.json -w '%{http_code}' -F file=@eicar.txt http://localhost/api/v1/files)
+          echo "upload EICAR: $code $(cat resp.json)"; test "$code" = 422
       - name: Logs em caso de falha
         if: failure()
         run: docker compose logs --tail 100

@@ -27,6 +27,12 @@ x-api-env: &api-env
   API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-600}
   BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
   BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+  APP_SECRET: ${APP_SECRET:?Defina APP_SECRET no .env (rode infra/scripts/install.sh)}
+  MFA_REQUIRED_FOR_ADMINS: ${MFA_REQUIRED_FOR_ADMINS:-true}
+  FILES_DIR: /data/files
+  # Antivírus: deixe CLAMAV_HOST vazio e remova "antivirus" de COMPOSE_PROFILES para desativar.
+  CLAMAV_HOST: ${CLAMAV_HOST-clamav}
+  CLAMAV_REQUIRED: ${CLAMAV_REQUIRED:-true}
 
 services:
   postgres:
@@ -90,6 +96,8 @@ services:
     restart: unless-stopped
     command: ['api']
     environment: *api-env
+    volumes:
+      - filesdata:/data/files
     depends_on:
       postgres: { condition: service_healthy }
       valkey: { condition: service_healthy }
@@ -103,6 +111,8 @@ services:
     restart: unless-stopped
     command: ['worker']
     environment: *api-env
+    volumes:
+      - filesdata:/data/files
     depends_on:
       api: { condition: service_healthy }
     healthcheck:
@@ -135,6 +145,25 @@ services:
     mem_limit: 128m
     logging: *logging
 
+  # Antivírus dos anexos. Na primeira subida baixa as assinaturas (alguns minutos,
+  # precisa de internet) e depois as atualiza sozinho a cada poucas horas.
+  clamav:
+    image: clamav/clamav:1.4
+    profiles: ['antivirus']
+    restart: unless-stopped
+    volumes:
+      - clamavdata:/var/lib/clamav
+    healthcheck:
+      test: ['CMD', 'clamdcheck.sh']
+      interval: 30s
+      timeout: 10s
+      start_period: 300s
+      retries: 5
+    mem_limit: 2g
+    logging: *logging
+
 volumes:
   pgdata:
   valkeydata:
+  filesdata:
+  clamavdata:

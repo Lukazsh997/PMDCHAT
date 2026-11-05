@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
 import { Monitor } from 'lucide-react';
-import { Alert, Avatar, Button, Spinner } from '@/components/ui';
+import { Alert, Button, Spinner } from '@/components/ui';
 import { describeUserAgent, formatDateTime } from '@/lib/format';
 import { useMe, useRevokeSession, useSessions } from '../auth/auth-api';
 import { ChangePasswordForm } from '../auth/ChangePasswordForm';
+import { AvatarEditor } from './AvatarEditor';
+import { MfaSection } from './MfaSection';
 
 export function AccountPage() {
   const me = useMe();
@@ -12,16 +14,19 @@ export function AccountPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-8">
-      <header className="flex items-center gap-4">
-        <Avatar name={user.displayName} size={56} />
-        <div className="min-w-0">
-          <h1 className="truncate text-xl font-bold">{user.displayName}</h1>
-          <p className="text-sm text-muted">
-            {user.username}
-            {user.jobTitle ? `, ${user.jobTitle}` : ''}
-          </p>
-        </div>
+      <header className="min-w-0">
+        <h1 className="truncate text-xl font-bold">{user.displayName}</h1>
+        <p className="text-sm text-muted">
+          {[user.username, user.jobTitle, user.orgUnit?.name].filter(Boolean).join(', ')}
+        </p>
       </header>
+
+      <Section
+        title="Foto de perfil"
+        description="Aparece para as outras pessoas nas conversas e no organograma. JPG, PNG ou WebP de até 5 MB."
+      >
+        <AvatarEditor user={user} />
+      </Section>
 
       {user.authSource === 'local' && (
         <Section
@@ -31,6 +36,15 @@ export function AccountPage() {
           <div className="max-w-sm">
             <ChangePasswordForm />
           </div>
+        </Section>
+      )}
+
+      {user.authSource === 'local' && (
+        <Section
+          title="Verificação em duas etapas"
+          description="Além da senha, pede um código do seu celular ao entrar. Protege a conta mesmo se a senha vazar."
+        >
+          <MfaSection />
         </Section>
       )}
 

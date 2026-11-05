@@ -1,5 +1,11 @@
 export { Alert } from './Alert';
 export { Avatar } from './Avatar';
 export { Button, type ButtonProps } from './Button';
+export { Dialog } from './Dialog';
+export { IconButton } from './IconButton';
+export { Menu, type MenuItem } from './Menu';
+export { Select } from './Select';
 export { Spinner } from './Spinner';
 export { TextField, type TextFieldProps } from './TextField';
+export { toast, Toaster } from './Toast';
+export { ErrorBoundary } from './ErrorBoundary';
