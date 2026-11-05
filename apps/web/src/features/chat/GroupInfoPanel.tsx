@@ -1,8 +1,23 @@
-import type { ConversationDetail, DirectoryUser } from '@plataforma/contracts';
+import {
+  type ConversationDetail,
+  type DirectoryUser,
+  NOTIFICATION_LEVELS,
+  type NotificationLevel,
+} from '@plataforma/contracts';
 import { Bell, BellOff, LogOut, MoreHorizontal, Pencil, UserPlus, X } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Alert, Avatar, Button, Dialog, IconButton, Menu, TextField, toast } from '@/components/ui';
+import {
+  Alert,
+  Avatar,
+  Button,
+  Dialog,
+  IconButton,
+  Menu,
+  Select,
+  TextField,
+  toast,
+} from '@/components/ui';
 import { isMuted, useGroupActions } from './chat-api';
 import { usePresence, useWatchPresence } from './live-stores';
 import { PersonPicker } from './PersonPicker';
@@ -84,7 +99,7 @@ export function ConversationInfo({
           )}
         </section>
 
-        <section className="border-t border-line px-4 py-3">
+        <section className="flex flex-col gap-3 border-t border-line px-4 py-3">
           {muted ? (
             <Button variant="ghost" className="-ml-3" onClick={() => mute(null)}>
               <Bell size={16} aria-hidden="true" /> Reativar notificações
@@ -105,6 +120,27 @@ export function ConversationInfo({
               )}
             />
           )}
+          <Select
+            label="Avisos desta conversa"
+            value={detail.notificationSetting ?? ''}
+            onChange={(e) =>
+              actions.level.mutate((e.target.value || null) as NotificationLevel | null, {
+                onError: (err) => toast(err.message, 'error'),
+              })
+            }
+            hint={
+              detail.notificationSetting
+                ? undefined
+                : `Padrão: ${NOTIFICATION_LEVELS[detail.notificationLevel].toLowerCase()}.`
+            }
+          >
+            <option value="">Padrão</option>
+            {(Object.keys(NOTIFICATION_LEVELS) as NotificationLevel[]).map((k) => (
+              <option key={k} value={k}>
+                {NOTIFICATION_LEVELS[k]}
+              </option>
+            ))}
+          </Select>
         </section>
 
         {isGroup && (

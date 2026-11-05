@@ -12,6 +12,7 @@ import { type ReactNode, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { Avatar, ErrorBoundary } from '@/components/ui';
 import { APP_NAME } from '@/lib/config';
+import { ensurePushSubscription } from '@/lib/push';
 import { connectionStore } from '@/lib/socket';
 import { useLogout, useMe } from '../auth/auth-api';
 import { useConversations } from '../chat/chat-api';
@@ -39,6 +40,10 @@ export function AppShell() {
   const logout = useLogout();
   const user = me.data?.user;
   useRealtimeSync(user?.id);
+  // Confirma a inscrição de push deste navegador (se a pessoa já permitiu avisos).
+  useEffect(() => {
+    if (user?.id) void ensurePushSubscription();
+  }, [user?.id]);
   const conversations = useConversations().data ?? [];
   const unread = conversations.reduce((n, c) => n + c.unreadCount, 0);
   const unreadMentions = conversations.reduce((n, c) => n + c.unreadMentions, 0);

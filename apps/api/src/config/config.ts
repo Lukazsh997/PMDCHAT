@@ -62,6 +62,13 @@ export const configSchema = z.object({
   /** Recusar uploads quando o antivírus estiver fora do ar. */
   CLAMAV_REQUIRED: bool.default(true),
 
+  /** Web Push (notificações com a aba fechada). Precisa de internet até o serviço do Google. */
+  PUSH_ENABLED: bool.default(true),
+  /** Contato exigido pelo protocolo VAPID (mailto: ou https:). */
+  PUSH_SUBJECT: z.string().default('mailto:suporte@plataforma.local'),
+  /** Proxy HTTP(S) de saída da rede, se a VM precisar dele para chegar à internet. */
+  PUSH_PROXY: z.url().optional(),
+
   BOOTSTRAP_ADMIN_USERNAME: z.string().default('admin'),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
 });

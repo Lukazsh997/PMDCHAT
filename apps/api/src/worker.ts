@@ -3,8 +3,11 @@ import { ConsoleLogger, Logger } from '@nestjs/common';
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { writeFile } from 'node:fs/promises';
+import webpush from 'web-push';
 import { loadConfig } from './config/config.js';
 import { createDatabase } from './database/database.js';
+import { deliverPush, PUSH_QUEUE, type PushJob, webPushSender } from './jobs/push.js';
+import { loadVapidKeys } from './modules/push/index.js';
 import {
   MAINTENANCE_QUEUE,
   type MaintenanceJobName,
@@ -49,6 +52,23 @@ async function main(): Promise<void> {
     log.log(`${job.name} concluída: ${JSON.stringify(result)}`),
   );
   worker.on('failed', (job, err) => log.error(`${job?.name ?? '?'} falhou: ${err.message}`));
+
+  // Web Push: avisa quem está com o navegador aberto sem a aba do sistema.
+  let pushWorker: Worker<PushJob> | undefined;
+  if (config.PUSH_ENABLED) {
+    const keys = await loadVapidKeys(db);
+    webpush.setVapidDetails(config.PUSH_SUBJECT, keys.publicKey, keys.privateKey);
+    const send = webPushSender(webpush, { proxy: config.PUSH_PROXY });
+    const presence = new Redis(config.REDIS_URL);
+    pushWorker = new Worker<PushJob>(
+      PUSH_QUEUE,
+      (job) => deliverPush({ db, redis: presence }, job.data, send),
+      { connection, concurrency: 4 },
+    );
+    pushWorker.on('failed', (job, err) =>
+      log.warn(`push ${job?.id ?? '?'} falhou: ${err.message}`),
+    );
+  }
   log.log('Worker iniciado');
 
   // Sinal de vida para o healthcheck do Docker: o arquivo é renovado enquanto o
@@ -68,6 +88,7 @@ async function main(): Promise<void> {
     log.log(`Recebido ${signal}, encerrando…`);
     clearInterval(heartbeatTimer);
     await worker.close();
+    await pushWorker?.close();
     await queue.close();
     await connection.quit();
     await db.$client.end({ timeout: 5 });

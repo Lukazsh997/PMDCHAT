@@ -12,6 +12,7 @@ import { DirectoryModule } from './modules/directory/index.js';
 import { FilesModule } from './modules/files/index.js';
 import { HealthModule } from './modules/health/index.js';
 import { OrgModule } from './modules/org/index.js';
+import { PushModule } from './modules/push/index.js';
 import { RbacModule } from './modules/rbac/index.js';
 import { RealtimeModule } from './modules/realtime/index.js';
 import { UsersModule } from './modules/users/index.js';
@@ -37,6 +38,7 @@ import { RedisModule } from './redis/redis.module.js';
     ConversationsModule,
     RealtimeModule,
     AdminModule,
+    PushModule,
     HealthModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: HttpExceptionFilter }],

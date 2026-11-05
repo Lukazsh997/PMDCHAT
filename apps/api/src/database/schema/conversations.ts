@@ -24,6 +24,7 @@ import { users } from './users.js';
 export const conversationType = pgEnum('conversation_type', ['direct', 'group']);
 export const memberRole = pgEnum('member_role', ['owner', 'admin', 'member']);
 export const messageType = pgEnum('message_type', ['text', 'system']);
+export const notificationLevel = pgEnum('notification_level', ['all', 'mentions', 'none']);
 
 export const conversations = pgTable(
   'conversations',
@@ -70,6 +71,8 @@ export const conversationMembers = pgTable(
     joinedSeq: bigint({ mode: 'number' }).notNull().default(0),
     /** Entrou pela lotação (canal de unidade): a sincronização põe e tira. */
     autoJoined: boolean().notNull().default(false),
+    /** Quando avisar. Vazio = padrão (todas; em grupos com mais de 50 pessoas, só menções). */
+    notificationLevel: notificationLevel(),
   },
   (t) => [
     primaryKey({ columns: [t.conversationId, t.userId] }),

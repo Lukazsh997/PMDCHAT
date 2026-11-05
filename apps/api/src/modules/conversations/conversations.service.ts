@@ -1,11 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type {
-  ConversationDetail,
-  ConversationMember,
-  ConversationSummary,
-  MemberRole,
-  MessagePreview,
-  SystemEvent,
+import {
+  type ConversationDetail,
+  type ConversationMember,
+  type ConversationSummary,
+  effectiveNotificationLevel,
+  type MemberRole,
+  type MessagePreview,
+  type NotificationLevel,
+  type SystemEvent,
 } from '@plataforma/contracts';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { AppException } from '../../common/app-exception.js';
@@ -35,6 +37,7 @@ interface SummaryRow extends Record<string, unknown> {
   role: MemberRole;
   last_read_seq: string;
   muted_until: Date | null;
+  notification_level: NotificationLevel | null;
   member_count: string;
   unread_count: string;
   unread_mentions: string;
@@ -77,7 +80,7 @@ export class ConversationsService {
     const rows = (await this.db.execute(sql`
       select c.id, c.type, c.name, c.description, c.last_seq, c.last_message_at,
              c.is_channel, c.include_subunits, ou.id as ou_id, ou.name as ou_name, ou.acronym as ou_acronym,
-             m.role, m.last_read_seq, m.muted_until,
+             m.role, m.last_read_seq, m.muted_until, m.notification_level,
              (select count(*) from conversation_members x where x.conversation_id = c.id) as member_count,
              (select count(*) from messages x
                where x.conversation_id = c.id and x.seq > greatest(m.last_read_seq, m.joined_seq)
@@ -154,6 +157,13 @@ export class ConversationsService {
         unreadCount: Number(r.unread_count),
         unreadMentions: Number(r.unread_mentions),
         mutedUntil: r.muted_until ? new Date(r.muted_until).toISOString() : null,
+        notificationSetting: r.notification_level,
+        notificationLevel: effectiveNotificationLevel({
+          notificationSetting: r.notification_level,
+          type: r.type,
+          memberCount: Number(r.member_count),
+          isChannel: r.is_channel,
+        }),
         lastMessage,
         lastMessageAt: new Date(r.last_message_at).toISOString(),
       };
@@ -436,15 +446,26 @@ export class ConversationsService {
     return this.detail(auth.user.id, id);
   }
 
-  async setMuted(
+  /** Preferências da pessoa nesta conversa: silenciar até uma data e nível de aviso. */
+  async updateMySettings(
     userId: string,
     id: string,
-    mutedUntil: string | null,
+    input: { mutedUntil?: string | null; notificationLevel?: NotificationLevel | null },
   ): Promise<ConversationSummary> {
     await this.requireMember(userId, id);
+    if (input.mutedUntil === undefined && input.notificationLevel === undefined) {
+      return this.summary(userId, id);
+    }
     await this.db
       .update(conversationMembers)
-      .set({ mutedUntil: mutedUntil ? new Date(mutedUntil) : null })
+      .set({
+        ...(input.mutedUntil !== undefined
+          ? { mutedUntil: input.mutedUntil ? new Date(input.mutedUntil) : null }
+          : {}),
+        ...(input.notificationLevel !== undefined
+          ? { notificationLevel: input.notificationLevel }
+          : {}),
+      })
       .where(
         and(eq(conversationMembers.conversationId, id), eq(conversationMembers.userId, userId)),
       );
@@ -561,6 +582,8 @@ export class ConversationsService {
       unreadCount: 0,
       unreadMentions: 0,
       mutedUntil: member.mutedUntil?.toISOString() ?? null,
+      notificationSetting: member.notificationLevel,
+      notificationLevel: member.notificationLevel ?? 'all',
       lastMessage: null,
       lastMessageAt: conversation.lastMessageAt.toISOString(),
     };

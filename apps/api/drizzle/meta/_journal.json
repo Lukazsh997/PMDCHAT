@@ -64,6 +64,13 @@
       "when": 1793895449560,
       "tag": "0008_fase2_papeis",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793895766682,
+      "tag": "0009_fase2_push",
+      "breakpoints": true
     }
   ]
 }

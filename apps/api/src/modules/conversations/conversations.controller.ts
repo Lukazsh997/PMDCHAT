@@ -141,9 +141,9 @@ export class ConversationsController {
   settings(
     @CurrentAuth() auth: AuthContext,
     @Param('id', id) cid: string,
-    @Body(new ZodPipe(updateMySettingsSchema)) b: { mutedUntil: string | null },
+    @Body(new ZodPipe(updateMySettingsSchema)) b: z.output<typeof updateMySettingsSchema>,
   ): Promise<ConversationSummary> {
-    return this.conversations.setMuted(auth.user.id, cid, b.mutedUntil);
+    return this.conversations.updateMySettings(auth.user.id, cid, b);
   }
 
   @Post('conversations/:id/read')

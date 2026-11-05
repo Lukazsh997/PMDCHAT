@@ -33,6 +33,10 @@ x-api-env: &api-env
   # Antivírus: deixe CLAMAV_HOST vazio e remova "antivirus" de COMPOSE_PROFILES para desativar.
   CLAMAV_HOST: ${CLAMAV_HOST-clamav}
   CLAMAV_REQUIRED: ${CLAMAV_REQUIRED:-true}
+  # Web Push (avisos com a aba fechada): precisa de saída para a internet (serviço do Google).
+  PUSH_ENABLED: ${PUSH_ENABLED:-true}
+  PUSH_SUBJECT: ${PUSH_SUBJECT:-mailto:suporte@plataforma.local}
+  PUSH_PROXY: ${PUSH_PROXY:-}
 
 services:
   postgres:

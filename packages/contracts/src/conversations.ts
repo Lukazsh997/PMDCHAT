@@ -28,6 +28,29 @@ export interface Reaction {
 }
 
 export type ConversationType = 'direct' | 'group';
+
+/** Quando avisar sobre uma conversa. */
+export type NotificationLevel = 'all' | 'mentions' | 'none';
+export const NOTIFICATION_LEVELS: Record<NotificationLevel, string> = {
+  all: 'Todas as mensagens',
+  mentions: 'Só quando me mencionarem',
+  none: 'Nenhuma',
+};
+/** Grupos maiores que isto avisam só menções, salvo escolha da pessoa. */
+export const LARGE_GROUP_SIZE = 50;
+
+/** Nível que vale: o escolhido, ou o padrão (diretas e canais: todas; grupos grandes: menções). */
+export function effectiveNotificationLevel(c: {
+  notificationSetting: NotificationLevel | null;
+  type: ConversationType;
+  memberCount: number;
+  isChannel: boolean;
+}): NotificationLevel {
+  if (c.notificationSetting) return c.notificationSetting;
+  return c.type === 'group' && !c.isChannel && c.memberCount > LARGE_GROUP_SIZE
+    ? 'mentions'
+    : 'all';
+}
 export type MemberRole = 'owner' | 'admin' | 'member';
 
 export interface ConversationMember extends DirectoryUser {
@@ -72,6 +95,10 @@ export interface ConversationSummary {
   /** Não lidas que mencionam você (ou @todos). */
   unreadMentions: number;
   mutedUntil: string | null;
+  /** Escolha da pessoa (null = padrão). */
+  notificationSetting: NotificationLevel | null;
+  /** O que vale de fato. */
+  notificationLevel: NotificationLevel;
   lastMessage: MessagePreview | null;
   lastMessageAt: string;
 }
@@ -212,9 +239,12 @@ export const addMembersSchema = z.object({ userIds: z.array(z.uuid()).min(1).max
 
 export const setMemberRoleSchema = z.object({ role: z.enum(['admin', 'member']) });
 
-export const updateMySettingsSchema = z.object({
-  mutedUntil: z.iso.datetime({ offset: true }).nullable(),
-});
+export const updateMySettingsSchema = z
+  .object({
+    mutedUntil: z.iso.datetime({ offset: true }).nullable(),
+    notificationLevel: z.enum(['all', 'mentions', 'none']).nullable(),
+  })
+  .partial();
 
 export const sendMessageSchema = z
   .object({
@@ -362,4 +392,32 @@ export interface SearchFileHit {
   conversation: { id: string; type: ConversationType; title: string };
   senderName: string;
   createdAt: string;
+}
+
+/* ------------------------------ Web Push ------------------------------- */
+
+export interface PushConfig {
+  /** Desligado na instalação (PUSH_ENABLED=false). */
+  enabled: boolean;
+  /** Chave pública VAPID para o navegador assinar. */
+  publicKey: string | null;
+}
+
+export const pushSubscriptionSchema = z.object({
+  endpoint: z.url({ protocol: /^https$/ }).max(2000),
+  keys: z.object({
+    p256dh: z.string().min(16).max(255),
+    auth: z.string().min(8).max(255),
+  }),
+});
+export type PushSubscriptionRequest = z.infer<typeof pushSubscriptionSchema>;
+
+/** O que o service worker recebe para mostrar a notificação. */
+export interface PushPayload {
+  title: string;
+  body: string;
+  /** Caminho a abrir no clique (ex.: /c/<id>). */
+  url: string;
+  /** Agrupa: uma notificação por conversa, substituída pela mais nova. */
+  tag: string;
 }

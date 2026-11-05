@@ -6,6 +6,7 @@ import { BrowserRouter } from 'react-router';
 import { App } from './App';
 import { meKey } from './features/auth/auth-api';
 import { ApiRequestError } from './lib/api';
+import { registerServiceWorker } from './lib/push';
 
 const queryClient: QueryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: true } },
@@ -18,6 +19,9 @@ const queryClient: QueryClient = new QueryClient({
     },
   }),
 });
+
+// Service worker: Web Push e instalação como aplicativo (quando o navegador permite).
+void registerServiceWorker();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

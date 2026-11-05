@@ -7,6 +7,7 @@ import type {
   MentionPage,
   MessagePage,
   MessagePreview,
+  NotificationLevel,
   ThreadPage,
 } from '@plataforma/contracts';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -475,6 +476,14 @@ export function useGroupActions(id: string) {
     mute: useMutation({
       mutationFn: (mutedUntil: string | null) =>
         api<ConversationSummary>('PATCH', `/conversations/${id}/me`, { mutedUntil }),
+      onSuccess: (c) => {
+        upsertSummary(qc, c);
+        void qc.invalidateQueries({ queryKey: keys.detail(id) });
+      },
+    }),
+    level: useMutation({
+      mutationFn: (notificationLevel: NotificationLevel | null) =>
+        api<ConversationSummary>('PATCH', `/conversations/${id}/me`, { notificationLevel }),
       onSuccess: (c) => {
         upsertSummary(qc, c);
         void qc.invalidateQueries({ queryKey: keys.detail(id) });

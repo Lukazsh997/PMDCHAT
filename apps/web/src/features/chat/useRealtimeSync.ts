@@ -74,6 +74,8 @@ export function useRealtimeSync(meId: string | undefined) {
         ?.find((c) => c.id === m.conversationId);
       // Conversa silenciada continua avisando quando alguém cita você.
       if (summary && isMuted(summary) && !mentionsMe) return;
+      if (summary?.notificationLevel === 'none') return;
+      if (summary?.notificationLevel === 'mentions' && !mentionsMe) return;
       const who = senderName ?? 'Nova mensagem';
       const where = summary?.type === 'group' ? ` em ${summary.title}` : '';
       showNotification({
