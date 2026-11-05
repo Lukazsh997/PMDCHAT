@@ -19,7 +19,7 @@ import { Alert, Avatar, Button, Spinner, toast } from '@/components/ui';
 import { ApiRequestError } from '@/lib/api';
 import { useOpenDirect } from '../chat/chat-api';
 import { usePresence, useWatchPresence } from '../chat/live-stores';
-import { BroadcastDialog } from './BroadcastDialog';
+import { BroadcastComposer } from '../chat/BroadcastComposer';
 import {
   canBroadcastTo,
   type TreeNode,
@@ -611,7 +611,11 @@ function UnitDetail({
         </div>
       </div>
       {canBroadcast && (
-        <BroadcastDialog open={broadcasting} onClose={() => setBroadcasting(false)} node={node} />
+        <BroadcastComposer
+          open={broadcasting}
+          onClose={() => setBroadcasting(false)}
+          initialUnit={node}
+        />
       )}
     </div>
   );

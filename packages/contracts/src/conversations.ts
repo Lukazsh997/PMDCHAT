@@ -4,7 +4,12 @@ import type { DirectoryUser } from './users.js';
 /** Regras de negócio decididas para o produto. */
 export const MESSAGE_RULES = {
   maxBodyLength: 8000,
-  editWindowMinutes: 15,
+  /**
+   * Quem enviou pode editar ou apagar a mensagem até este prazo, contado pela hora de
+   * envio registrada no servidor. Ninguém apaga mensagem de outra pessoa.
+   */
+  editWindowMinutes: 10,
+  deleteWindowMinutes: 10,
   /** Mensagens excluídas são removidas definitivamente após este prazo. */
   deletedRetentionHours: 48,
   maxAttachmentsPerMessage: 10,
@@ -73,9 +78,8 @@ export interface Attachment {
 /** Mensagem entregue por um comunicado em massa. */
 export interface BroadcastRef {
   id: string;
-  /** Unidade de destino, ex.: "Secretaria de Administração (SEAD)". */
-  unitName: string;
-  includeSubunits: boolean;
+  /** Para quem foi, ex.: "SEAD e subunidades, DCA e 3 pessoas". */
+  label: string;
 }
 
 export interface Message {
@@ -155,21 +159,44 @@ export const markReadSchema = z.object({ seq: z.number().int().min(0) });
 export const BROADCAST_RULES = {
   /** Teto de destinatários por envio. */
   maxRecipients: 5000,
+  /** Sem a permissão de comunicados, só é possível escolher pessoas, até este número. */
+  maxPeopleWithoutPermission: 50,
+  maxUnits: 50,
+  maxPeople: 500,
 } as const;
 
+export const broadcastTargetsSchema = z.object({
+  /** Setores: todas as pessoas ativas lotadas (e, se marcado, nas subunidades). */
+  units: z
+    .array(z.object({ orgUnitId: z.uuid(), includeSubunits: z.boolean().default(true) }))
+    .max(BROADCAST_RULES.maxUnits)
+    .default([]),
+  /** Pessoas escolhidas uma a uma. */
+  userIds: z.array(z.uuid()).max(BROADCAST_RULES.maxPeople).default([]),
+});
+export type BroadcastTargets = z.input<typeof broadcastTargetsSchema>;
+
+const hasTarget = (v: { units: unknown[]; userIds: unknown[] }) =>
+  v.units.length > 0 || v.userIds.length > 0;
+
+export const broadcastPreviewSchema = broadcastTargetsSchema.refine(hasTarget, {
+  message: 'Escolha ao menos uma pessoa ou setor',
+  path: ['userIds'],
+});
+
 /**
- * Comunicado em massa: entregue como mensagem direta a cada pessoa ativa lotada na
- * unidade (e, se marcado, nas subunidades). Respostas chegam em particular a quem enviou.
+ * Comunicado em massa: entregue como mensagem direta a cada destinatário (pessoas
+ * escolhidas e pessoas ativas dos setores escolhidos, sem repetir). Respostas chegam
+ * em particular a quem enviou.
  */
-export const sendBroadcastSchema = z
-  .object({
-    orgUnitId: z.uuid(),
-    includeSubunits: z.boolean().default(true),
+export const sendBroadcastSchema = broadcastTargetsSchema
+  .extend({
     clientId: z.string().min(8).max(64),
     body: z.string().max(MESSAGE_RULES.maxBodyLength, 'Mensagem muito longa').default(''),
     attachmentIds: z.array(z.uuid()).max(MESSAGE_RULES.maxAttachmentsPerMessage).default([]),
   })
   .transform((v) => ({ ...v, body: v.body.trim() }))
+  .refine(hasTarget, { message: 'Escolha ao menos uma pessoa ou setor', path: ['userIds'] })
   .refine((v) => v.body.length > 0 || v.attachmentIds.length > 0, {
     message: 'Escreva o comunicado ou anexe um arquivo',
     path: ['body'],

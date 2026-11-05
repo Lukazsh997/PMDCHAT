@@ -9,7 +9,6 @@ import {
   Post,
   Put,
   Query,
-  Req,
 } from '@nestjs/common';
 import {
   addMembersSchema,
@@ -26,12 +25,10 @@ import {
   updateConversationSchema,
   updateMySettingsSchema,
 } from '@plataforma/contracts';
-import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { CurrentAuth } from '../../common/request-context.js';
 import { ZodPipe } from '../../common/zod.pipe.js';
 import type { AuthContext } from '../auth/index.js';
-import { PermissionService, requestGrants } from '../rbac/index.js';
 import { ConversationsService } from './conversations.service.js';
 import { MessagesService } from './messages.service.js';
 
@@ -47,7 +44,6 @@ export class ConversationsController {
   constructor(
     private readonly conversations: ConversationsService,
     private readonly messages: MessagesService,
-    private readonly permissions: PermissionService,
   ) {}
 
   @Get('conversations')
@@ -166,11 +162,7 @@ export class ConversationsController {
   }
 
   @Delete('messages/:id')
-  async remove(
-    @CurrentAuth() auth: AuthContext,
-    @Param('id', id) mid: string,
-    @Req() req: FastifyRequest,
-  ): Promise<Message> {
-    return this.messages.remove(auth, await requestGrants(req, this.permissions), mid);
+  async remove(@CurrentAuth() auth: AuthContext, @Param('id', id) mid: string): Promise<Message> {
+    return this.messages.remove(auth, mid);
   }
 }

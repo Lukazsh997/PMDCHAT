@@ -1,4 +1,5 @@
 import { API_PREFIX, type ApiError, type ApiErrorCode } from '@plataforma/contracts';
+import { noteServerDate } from './server-clock';
 
 /** Erro de uma chamada à API, com o código estável definido nos contratos. */
 export class ApiRequestError extends Error {
@@ -33,6 +34,7 @@ export async function api<T>(method: Method, path: string, body?: unknown): Prom
     });
   }
 
+  noteServerDate(res.headers.get('date'));
   if (res.status === 204) return undefined as T;
   const data: unknown = await res.json().catch(() => null);
   if (!res.ok) {

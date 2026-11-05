@@ -25,10 +25,12 @@ describe('Grants', () => {
     expect(g.requiresMfa).toBe(true);
   });
 
-  it('moderador não acessa o painel e não precisa de MFA', () => {
-    const g = new Grants([{ id: '1', role: 'moderator', orgUnitId: null, orgUnitPath: null }]);
+  it('comunicador não acessa o painel e não precisa de MFA', () => {
+    const g = new Grants([{ id: '1', role: 'broadcaster', orgUnitId: 'u', orgUnitPath: '/u/' }]);
     expect(g.hasAny('admin.access')).toBe(false);
     expect(g.requiresMfa).toBe(false);
-    expect(g.permissions).toEqual(['messages.delete_any']);
+    expect(g.permissions).toEqual(['broadcast.send']);
+    expect(g.canOn('broadcast.send', '/u/x/')).toBe(true);
+    expect(g.canOn('broadcast.send', '/v/')).toBe(false);
   });
 });

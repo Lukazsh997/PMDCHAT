@@ -3,9 +3,10 @@ import {
   BROADCAST_RULES,
   type BroadcastResult,
   type BroadcastScopes,
+  type broadcastTargetsSchema,
   type sendBroadcastSchema,
 } from '@plataforma/contracts';
-import { and, asc, count, eq, gt, inArray, isNull, like, ne, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, like, ne, or, type SQL, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { AppException } from '../../common/app-exception.js';
 import { DomainEvents } from '../../common/events/domain-events.js';
@@ -18,7 +19,6 @@ import {
   messageAttachments,
   messages,
   orgUnits,
-  type OrgUnitRow,
   users,
 } from '../../database/schema/index.js';
 import { AuditService } from '../audit/index.js';
@@ -28,10 +28,11 @@ import type { Grants } from '../rbac/index.js';
 import { toMessage } from './message-mapper.js';
 
 type Input = z.output<typeof sendBroadcastSchema>;
+type Targets = z.output<typeof broadcastTargetsSchema>;
 const BATCH = 500;
 
 /**
- * Comunicados em massa. Cada pessoa da unidade recebe o texto na conversa direta com
+ * Comunicados em massa. Cada destinatário recebe o texto na conversa direta com
  * quem enviou (como uma lista de transmissão): a resposta vai só para o remetente e
  * ninguém vê quem mais recebeu. O registro em `broadcasts` guarda o envio para consulta.
  */
@@ -49,20 +50,9 @@ export class BroadcastsService {
     return { global: false, unitIds: paths.map((p) => p.split('/').at(-2)!) };
   }
 
-  /** Quantas pessoas receberiam (para a tela de confirmação). */
-  async preview(
-    auth: AuthContext,
-    grants: Grants,
-    orgUnitId: string,
-    includeSubunits: boolean,
-  ): Promise<number> {
-    const unit = await this.allowedUnit(grants, orgUnitId);
-    const [row] = await this.db
-      .select({ n: count() })
-      .from(users)
-      .leftJoin(orgUnits, eq(orgUnits.id, users.orgUnitId))
-      .where(and(...this.recipientFilter(auth.user.id, unit, includeSubunits)));
-    return row?.n ?? 0;
+  /** Quantas pessoas receberiam (mostrado no botão de envio). */
+  async preview(auth: AuthContext, grants: Grants, targets: Targets): Promise<number> {
+    return (await this.resolve(auth, grants, targets)).recipients.length;
   }
 
   async send(
@@ -71,7 +61,6 @@ export class BroadcastsService {
     input: Input,
     meta: { ip: string | null; userAgent: string | null },
   ): Promise<BroadcastResult> {
-    const unit = await this.allowedUnit(grants, input.orgUnitId);
     const senderId = auth.user.id;
 
     // Reenvio do mesmo comunicado (rede caiu): devolve o resultado do primeiro.
@@ -82,26 +71,10 @@ export class BroadcastsService {
       .limit(1);
     if (previous) return previous;
 
-    const recipients = (
-      await this.db
-        .select({ id: users.id })
-        .from(users)
-        .leftJoin(orgUnits, eq(orgUnits.id, users.orgUnitId))
-        .where(and(...this.recipientFilter(senderId, unit, input.includeSubunits)))
-        .orderBy(asc(users.id))
-        .limit(BROADCAST_RULES.maxRecipients + 1)
-    ).map((r) => r.id);
+    const { recipients, label, units, people } = await this.resolve(auth, grants, input);
     if (!recipients.length) {
-      throw new AppException(409, 'CONFLICT', 'Não há pessoas ativas nesta unidade para receber.');
+      throw new AppException(409, 'CONFLICT', 'Nenhum dos destinatários escolhidos está ativo.');
     }
-    if (recipients.length > BROADCAST_RULES.maxRecipients) {
-      throw new AppException(
-        400,
-        'VALIDATION_FAILED',
-        `Um comunicado pode ter no máximo ${BROADCAST_RULES.maxRecipients} destinatários. Escolha uma unidade menor.`,
-      );
-    }
-    const unitName = unit.acronym ? `${unit.name} (${unit.acronym})` : unit.name;
 
     const result = await this.db.transaction(async (tx) => {
       const attached = input.attachmentIds.length
@@ -130,9 +103,9 @@ export class BroadcastsService {
         .insert(broadcasts)
         .values({
           senderId,
-          orgUnitId: unit.id,
-          unitName,
-          includeSubunits: input.includeSubunits,
+          orgUnitId: units[0]?.unit.id ?? null,
+          label,
+          includeSubunits: units.some((u) => u.includeSubunits),
           body: input.body,
           recipientCount: recipients.length,
           clientId: input.clientId,
@@ -215,11 +188,7 @@ export class BroadcastsService {
       return { broadcast: broadcast!, delivered, attachments: fileOrder.map(toUploaded) };
     });
 
-    const ref = {
-      id: result.broadcast.id,
-      unitName,
-      includeSubunits: input.includeSubunits,
-    };
+    const ref = { id: result.broadcast.id, label };
     // Entrega só a quem recebe: o remetente não ganha centenas de conversas na tela.
     for (const d of result.delivered) {
       this.events.emit('message.created', {
@@ -234,9 +203,13 @@ export class BroadcastsService {
       entityId: result.broadcast.id,
       ...meta,
       metadata: {
-        orgUnitId: unit.id,
-        unitName,
-        includeSubunits: input.includeSubunits,
+        label,
+        units: units.map((u) => ({
+          orgUnitId: u.unit.id,
+          name: u.unit.name,
+          includeSubunits: u.includeSubunits,
+        })),
+        people,
         recipients: recipients.length,
         attachments: input.attachmentIds.length,
       },
@@ -244,26 +217,101 @@ export class BroadcastsService {
     return { id: result.broadcast.id, recipientCount: recipients.length };
   }
 
-  private async allowedUnit(grants: Grants, orgUnitId: string): Promise<OrgUnitRow> {
-    const [unit] = await this.db.select().from(orgUnits).where(eq(orgUnits.id, orgUnitId)).limit(1);
-    if (!unit || !unit.isActive) throw new AppException(404, 'NOT_FOUND', 'Unidade não encontrada');
-    if (!grants.canOn('broadcast.send', unit.path)) {
+  /**
+   * Destinatários sem repetir: pessoas escolhidas + pessoas ativas dos setores. Setores
+   * exigem a permissão de comunicados sobre a unidade; pessoas, não (todos falam com
+   * todos), mas sem a permissão o envio fica limitado a poucas pessoas.
+   */
+  private async resolve(auth: AuthContext, grants: Grants, t: Targets) {
+    if (auth.user.kind === 'guest') {
+      throw new AppException(403, 'FORBIDDEN', 'Convidados não enviam comunicados.');
+    }
+    const unitIds = [...new Set(t.units.map((u) => u.orgUnitId))];
+    const rows = unitIds.length
+      ? await this.db.select().from(orgUnits).where(inArray(orgUnits.id, unitIds))
+      : [];
+    const units = t.units
+      .filter((x, i, all) => all.findIndex((y) => y.orgUnitId === x.orgUnitId) === i)
+      .map((x) => {
+        const unit = rows.find((r) => r.id === x.orgUnitId);
+        if (!unit || !unit.isActive)
+          throw new AppException(404, 'NOT_FOUND', 'Setor não encontrado');
+        if (!grants.canOn('broadcast.send', unit.path)) {
+          throw new AppException(
+            403,
+            'FORBIDDEN',
+            `Você não pode enviar comunicados para ${unit.name}.`,
+          );
+        }
+        return { unit, includeSubunits: x.includeSubunits };
+      });
+
+    const userIds = [...new Set(t.userIds)].filter((id) => id !== auth.user.id);
+    if (
+      !grants.hasAny('broadcast.send') &&
+      userIds.length > BROADCAST_RULES.maxPeopleWithoutPermission
+    ) {
       throw new AppException(
-        403,
-        'FORBIDDEN',
-        'Você não pode enviar comunicados para esta unidade.',
+        400,
+        'VALIDATION_FAILED',
+        `Escolha no máximo ${BROADCAST_RULES.maxPeopleWithoutPermission} pessoas por envio.`,
       );
     }
-    return unit;
-  }
 
-  private recipientFilter(senderId: string, unit: OrgUnitRow, includeSubunits: boolean): SQL[] {
-    return [
+    const active = (): SQL[] => [
       isNull(users.deletedAt),
       eq(users.status, 'active'),
       or(isNull(users.accessExpiresAt), gt(users.accessExpiresAt, new Date()))!,
-      ne(users.id, senderId),
-      includeSubunits ? like(orgUnits.path, `${unit.path}%`) : eq(users.orgUnitId, unit.id),
+      ne(users.id, auth.user.id),
     ];
+    const who: SQL[] = [];
+    if (userIds.length) who.push(inArray(users.id, userIds));
+    for (const u of units) {
+      who.push(
+        u.includeSubunits ? like(orgUnits.path, `${u.unit.path}%`) : eq(users.orgUnitId, u.unit.id),
+      );
+    }
+    const found = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .leftJoin(orgUnits, eq(orgUnits.id, users.orgUnitId))
+      .where(and(...active(), or(...who)))
+      .orderBy(asc(users.id))
+      .limit(BROADCAST_RULES.maxRecipients + 1);
+    if (found.length > BROADCAST_RULES.maxRecipients) {
+      throw new AppException(
+        400,
+        'VALIDATION_FAILED',
+        `Um comunicado pode ter no máximo ${BROADCAST_RULES.maxRecipients} destinatários. Escolha menos setores.`,
+      );
+    }
+
+    // Só diz "e subunidades" quando o setor tem mesmo unidades abaixo.
+    const withChildren = new Set(
+      units.length
+        ? (
+            await this.db
+              .select({ parentId: orgUnits.parentId })
+              .from(orgUnits)
+              .where(
+                inArray(
+                  orgUnits.parentId,
+                  units.map((u) => u.unit.id),
+                ),
+              )
+          ).map((r) => r.parentId)
+        : [],
+    );
+    const parts = units.map(
+      (u) =>
+        `${u.unit.acronym || u.unit.name}${u.includeSubunits && withChildren.has(u.unit.id) ? ' e subunidades' : ''}`,
+    );
+    if (userIds.length)
+      parts.push(`${userIds.length} ${userIds.length === 1 ? 'pessoa' : 'pessoas'}`);
+    const label = (
+      parts.length > 1 ? `${parts.slice(0, -1).join(', ')} e ${parts.at(-1)}` : parts[0]!
+    ).slice(0, 200);
+
+    return { recipients: found.map((r) => r.id), label, units, people: userIds.length };
   }
 }

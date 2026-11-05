@@ -23,7 +23,6 @@ import {
 import { AuditService } from '../audit/index.js';
 import type { AuthContext } from '../auth/index.js';
 import { toUploaded } from '../files/index.js';
-import type { Grants } from '../rbac/index.js';
 import { ConversationsService } from './conversations.service.js';
 import { toMessage } from './message-mapper.js';
 
@@ -146,66 +145,74 @@ export class MessagesService {
 
   async edit(auth: AuthContext, messageId: string, body: string): Promise<Message> {
     const row = await this.load(auth.user.id, messageId);
-    if (row.senderId !== auth.user.id || row.type !== 'text')
-      throw forbidden('Você só pode editar as suas mensagens.');
+    this.assertAuthor(auth, row, 'editar');
     if (row.deletedAt) throw new AppException(409, 'CONFLICT', 'Esta mensagem foi apagada.');
-    const minutes = (Date.now() - row.createdAt.getTime()) / 60_000;
-    if (minutes > MESSAGE_RULES.editWindowMinutes) {
-      throw new AppException(
-        409,
-        'CONFLICT',
-        `Mensagens só podem ser editadas até ${MESSAGE_RULES.editWindowMinutes} minutos após o envio.`,
-      );
+    if (body === row.body) {
+      await this.assertWithinWindow(messageId, MESSAGE_RULES.editWindowMinutes, 'editadas');
+      return (await this.withAttachments([row]))[0]!;
     }
-    if (body === row.body) return (await this.withAttachments([row]))[0]!;
 
     const updated = await this.db.transaction(async (tx) => {
-      await tx
-        .insert(messageEdits)
-        .values({ messageId, previousBody: row.body, editedBy: auth.user.id });
+      // O prazo é conferido na própria atualização, pelo relógio do banco que gravou o envio:
+      // o horário do computador de quem edita não conta, e não há corrida com o prazo.
       const [u] = await tx
         .update(messages)
         .set({ body, editedAt: new Date() })
-        .where(eq(messages.id, messageId))
+        .where(and(eq(messages.id, messageId), withinMinutes(MESSAGE_RULES.editWindowMinutes)))
         .returning();
-      return u!;
+      if (!u) throw windowClosed(MESSAGE_RULES.editWindowMinutes, 'editadas');
+      await tx
+        .insert(messageEdits)
+        .values({ messageId, previousBody: row.body, editedBy: auth.user.id });
+      return u;
     });
     return this.publishUpdate(updated);
   }
 
   /**
-   * Apaga uma mensagem: some para todos na hora e o conteúdo é removido em
-   * definitivo após 48 h (tarefa do worker).
+   * Apaga uma mensagem: some para todos na hora e o conteúdo é removido em definitivo
+   * após 48 h (tarefa do worker). Só quem enviou, e só dentro do prazo.
    */
-  async remove(auth: AuthContext, grants: Grants, messageId: string): Promise<Message> {
+  async remove(auth: AuthContext, messageId: string): Promise<Message> {
     const row = await this.load(auth.user.id, messageId);
     if (row.type !== 'text') throw forbidden('Mensagens do sistema não podem ser apagadas.');
+    this.assertAuthor(auth, row, 'apagar');
     if (row.deletedAt) return (await this.withAttachments([row]))[0]!;
 
-    const own = row.senderId === auth.user.id;
-    let reason: 'own' | 'group_admin' | 'moderator' = 'own';
-    if (!own) {
-      const { member, conversation } = await this.conversations.requireMember(
-        auth.user.id,
-        row.conversationId,
-      );
-      if (conversation.type === 'group' && member.role !== 'member') reason = 'group_admin';
-      else if (grants.hasGlobal('messages.delete_any')) reason = 'moderator';
-      else throw forbidden('Você só pode apagar as suas mensagens.');
-    }
     const [updated] = await this.db
       .update(messages)
       .set({ deletedAt: new Date(), deletedBy: auth.user.id })
-      .where(eq(messages.id, messageId))
+      .where(
+        and(
+          eq(messages.id, messageId),
+          isNull(messages.deletedAt),
+          withinMinutes(MESSAGE_RULES.deleteWindowMinutes),
+        ),
+      )
       .returning();
+    if (!updated) throw windowClosed(MESSAGE_RULES.deleteWindowMinutes, 'apagadas');
     await this.audit.record({
-      action: own ? 'message.deleted' : 'message.deleted_by_moderator',
+      action: 'message.deleted',
       actorId: auth.user.id,
       entityType: 'message',
       entityId: messageId,
-      metadata: { conversationId: row.conversationId, senderId: row.senderId, reason },
+      metadata: { conversationId: row.conversationId },
     });
-    return this.publishUpdate(updated!);
+    return this.publishUpdate(updated);
+  }
+
+  private assertAuthor(auth: AuthContext, row: MessageRow, verb: string): void {
+    if (row.senderId !== auth.user.id || row.type !== 'text')
+      throw forbidden(`Você só pode ${verb} as suas mensagens.`);
+  }
+
+  private async assertWithinWindow(messageId: string, minutes: number, what: string) {
+    const [ok] = await this.db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(eq(messages.id, messageId), withinMinutes(minutes)))
+      .limit(1);
+    if (!ok) throw windowClosed(minutes, what);
   }
 
   private async publishUpdate(row: MessageRow): Promise<Message> {
@@ -254,8 +261,7 @@ export class MessagesService {
       const b = await this.db
         .select({
           id: broadcasts.id,
-          unitName: broadcasts.unitName,
-          includeSubunits: broadcasts.includeSubunits,
+          label: broadcasts.label,
         })
         .from(broadcasts)
         .where(inArray(broadcasts.id, broadcastIds));
@@ -278,3 +284,14 @@ export class MessagesService {
 }
 
 const forbidden = (message: string) => new AppException(403, 'FORBIDDEN', message);
+
+/** Enviada há menos de `minutes` minutos, pelo relógio do banco (o mesmo que gravou o envio). */
+const withinMinutes = (minutes: number) =>
+  sql`${messages.createdAt} > now() - make_interval(mins => ${minutes}::int)`;
+
+const windowClosed = (minutes: number, what: string) =>
+  new AppException(
+    409,
+    'CONFLICT',
+    `Mensagens só podem ser ${what} até ${minutes} minutos após o envio.`,
+  );

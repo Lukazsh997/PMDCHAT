@@ -1,22 +1,31 @@
 import type { DirectoryUser } from '@plataforma/contracts';
 import { Check, Search } from 'lucide-react';
-import { useDeferredValue, useState } from 'react';
+import { type ReactNode, useDeferredValue, useState } from 'react';
 import { Avatar, Spinner } from '@/components/ui';
 import { useDirectory } from './chat-api';
 
-/** Busca no diretório por nome, usuário, cargo ou setor. */
+/**
+ * Busca no diretório por nome, usuário, cargo ou setor. `extra` acrescenta resultados
+ * no topo da lista para o mesmo termo (o comunicado usa para oferecer setores).
+ */
 export function PersonPicker({
   selected,
   onToggle,
   exclude = [],
   multiple,
   autoFocus,
+  placeholder = 'Nome, cargo ou setor',
+  extra,
+  listClassName = 'max-h-80',
 }: {
   selected: DirectoryUser[];
   onToggle: (u: DirectoryUser) => void;
   exclude?: string[];
   multiple: boolean;
   autoFocus?: boolean;
+  placeholder?: string;
+  extra?: (query: string) => ReactNode;
+  listClassName?: string;
 }) {
   const [q, setQ] = useState('');
   const deferred = useDeferredValue(q.trim());
@@ -33,12 +42,13 @@ export function PersonPicker({
           autoFocus={autoFocus}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Nome, cargo ou setor"
+          placeholder={placeholder}
           className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted"
         />
         {people.isFetching && <Spinner size={14} />}
       </label>
-      <ul className="-mx-2 max-h-80 overflow-y-auto" aria-label="Pessoas encontradas">
+      <ul className={`-mx-2 overflow-y-auto ${listClassName}`} aria-label="Resultados da busca">
+        {extra?.(deferred)}
         {list.map((u) => (
           <li key={u.id}>
             <button
@@ -73,7 +83,7 @@ export function PersonPicker({
         ))}
         {!people.isPending && list.length === 0 && (
           <li className="px-2 py-6 text-center text-sm text-muted">
-            {deferred ? 'Ninguém encontrado com esse termo.' : 'Digite para buscar.'}
+            {deferred ? 'Nenhuma pessoa encontrada com esse termo.' : 'Digite para buscar.'}
           </li>
         )}
       </ul>

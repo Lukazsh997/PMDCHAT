@@ -36,6 +36,13 @@
       "when": 1793885090913,
       "tag": "0004_fase1_organograma_comunicados",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793888424403,
+      "tag": "0005_fase1_sem_moderador",
+      "breakpoints": true
     }
   ]
 }

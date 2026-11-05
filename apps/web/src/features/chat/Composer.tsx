@@ -1,26 +1,10 @@
-import {
-  type Attachment,
-  FILE_RULES,
-  MESSAGE_RULES,
-  type UploadedFile,
-} from '@plataforma/contracts';
-import { FileText, Paperclip, SendHorizontal, X } from 'lucide-react';
+import { type Attachment, MESSAGE_RULES } from '@plataforma/contracts';
+import { Paperclip, SendHorizontal, X } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { IconButton, toast } from '@/components/ui';
-import { ApiRequestError, uploadFile } from '@/lib/api';
-import { formatBytes } from '@/lib/format';
+import { IconButton } from '@/components/ui';
+import { PendingAttachments, useAttachmentUploads } from './attachment-uploads';
 import type { ChatMessage } from './chat-api';
 import { sendTyping } from './live-stores';
-
-interface Pending {
-  key: string;
-  file: File;
-  progress: number;
-  result?: UploadedFile;
-  error?: string;
-  abort: AbortController;
-  preview?: string;
-}
 
 export interface ComposerHandle {
   addFiles: (files: FileList | File[]) => void;
@@ -43,7 +27,8 @@ export const Composer = forwardRef<
   ref,
 ) {
   const [text, setText] = useState('');
-  const [pending, setPending] = useState<Pending[]>([]);
+  const uploads = useAttachmentUploads();
+  const { pending } = uploads;
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const drafts = useRef(new Map<string, string>());
@@ -51,7 +36,6 @@ export const Composer = forwardRef<
   // Rascunho por conversa: trocar de conversa não perde o que foi escrito.
   useEffect(() => {
     setText(drafts.current.get(conversationId) ?? '');
-    setPending([]);
     area.current?.focus();
   }, [conversationId]);
 
@@ -75,55 +59,11 @@ export const Composer = forwardRef<
   useImperativeHandle(ref, () => ({ addFiles, focus: () => area.current?.focus() }));
 
   function addFiles(list: FileList | File[]) {
-    if (editing) return;
-    const files = [...list].slice(0, MESSAGE_RULES.maxAttachmentsPerMessage - pending.length);
-    for (const file of files) {
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-      if ((FILE_RULES.blockedExtensions as readonly string[]).includes(ext)) {
-        toast(`Arquivos .${ext} não são permitidos por segurança.`, 'error');
-        continue;
-      }
-      if (file.size > FILE_RULES.maxSizeBytes) {
-        toast(
-          `"${file.name}" passa do limite de ${FILE_RULES.maxSizeBytes / 1024 / 1024} MB.`,
-          'error',
-        );
-        continue;
-      }
-      const item: Pending = {
-        key: `${file.name}-${file.size}-${Math.random()}`,
-        file,
-        progress: 0,
-        abort: new AbortController(),
-        preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
-      };
-      setPending((p) => [...p, item]);
-      const update = (patch: Partial<Pending>) =>
-        setPending((p) => p.map((x) => (x.key === item.key ? { ...x, ...patch } : x)));
-      uploadFile<UploadedFile>(
-        '/files',
-        file,
-        (progress) => update({ progress }),
-        item.abort.signal,
-      )
-        .then((result) => update({ result, progress: 1 }))
-        .catch((e: unknown) => {
-          if (e instanceof DOMException && e.name === 'AbortError') return;
-          update({ error: e instanceof ApiRequestError ? e.message : 'Falha no envio' });
-        });
-    }
+    if (!editing) uploads.add(list);
   }
 
-  function remove(p: Pending) {
-    p.abort.abort();
-    if (p.preview) URL.revokeObjectURL(p.preview);
-    setPending((list) => list.filter((x) => x.key !== p.key));
-  }
-
-  const uploading = pending.some((p) => !p.result && !p.error);
-  const ready = pending.filter((p) => p.result).map((p) => p.result!);
-  const canSend =
-    !uploading && (text.trim().length > 0 || ready.length > 0) && !pending.some((p) => p.error);
+  const { uploading, ready } = uploads;
+  const canSend = !uploading && (text.trim().length > 0 || ready.length > 0) && !uploads.failed;
 
   async function submit() {
     if (editing) {
@@ -135,8 +75,7 @@ export const Composer = forwardRef<
     }
     if (!canSend) return;
     onSend(text.replace(/\s+$/u, ''), ready);
-    pending.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
-    setPending([]);
+    uploads.clear();
     setText('');
     drafts.current.delete(conversationId);
   }
@@ -152,46 +91,7 @@ export const Composer = forwardRef<
           </IconButton>
         </div>
       )}
-      {pending.length > 0 && (
-        <ul className="mb-2 flex flex-wrap gap-2" aria-label="Anexos">
-          {pending.map((p) => (
-            <li
-              key={p.key}
-              className="relative flex w-56 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] border border-line bg-paper py-1.5 pr-1 pl-1.5"
-            >
-              {p.preview ? (
-                <img src={p.preview} alt="" className="h-9 w-9 shrink-0 rounded object-cover" />
-              ) : (
-                <FileText size={22} className="mx-1.5 shrink-0 text-muted" aria-hidden="true" />
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-semibold">{p.file.name}</span>
-                <span
-                  className={`block truncate text-xs ${p.error ? 'text-danger' : 'text-muted'}`}
-                >
-                  {p.error ??
-                    (p.result
-                      ? formatBytes(p.file.size)
-                      : `Enviando ${Math.round(p.progress * 100)}%`)}
-                </span>
-              </span>
-              <IconButton
-                label={`Remover ${p.file.name}`}
-                className="h-7 w-7"
-                onClick={() => remove(p)}
-              >
-                <X size={14} aria-hidden="true" />
-              </IconButton>
-              {!p.result && !p.error && (
-                <span
-                  className="absolute bottom-0 left-0 h-0.5 bg-primary transition-[width]"
-                  style={{ width: `${p.progress * 100}%` }}
-                />
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <PendingAttachments items={pending} onRemove={uploads.remove} />
       <div className="flex items-end gap-1.5">
         <IconButton
           label="Anexar arquivo"

@@ -247,18 +247,20 @@ describe('comunicados em massa', () => {
     );
     return { u, sender, elaine, marcus, aline, chefe, saude };
   }
+  const post = (cookie: string, body: Record<string, unknown>) =>
+    call(ctx, 'POST', '/broadcasts', { cookie, body: { clientId: cid(), ...body } });
+  const listOf = async (cookie: string) =>
+    (await call(ctx, 'GET', '/conversations', { cookie })).body as unknown as Record<string, any>[];
 
-  it('entrega como mensagem direta a cada pessoa ativa da unidade e das subunidades', async () => {
+  it('entrega como mensagem direta a cada pessoa ativa do setor e das subunidades', async () => {
     const { u, sender, elaine, aline, chefe, saude } = await setup();
 
     const scopes = await call(ctx, 'GET', '/broadcasts/scopes', { cookie: sender.cookie });
     expect(scopes.body).toEqual({ global: false, unitIds: [u.adm.id] });
-    const preview = await call(
-      ctx,
-      'GET',
-      `/broadcasts/preview?orgUnitId=${u.adm.id}&includeSubunits=true`,
-      { cookie: sender.cookie },
-    );
+    const preview = await call(ctx, 'POST', '/broadcasts/preview', {
+      cookie: sender.cookie,
+      body: { units: [{ orgUnitId: u.adm.id, includeSubunits: true }] },
+    });
     expect(preview.body).toEqual({ recipientCount: 4 });
 
     // Conversa direta que já existia é reaproveitada.
@@ -270,33 +272,20 @@ describe('comunicados em massa', () => {
     ).body!;
 
     const clientId = cid();
-    const res = await call(ctx, 'POST', '/broadcasts', {
-      cookie: sender.cookie,
-      body: {
-        orgUnitId: u.adm.id,
-        includeSubunits: true,
-        clientId,
-        body: 'Ponto facultativo amanhã.',
-      },
-    });
+    const body = {
+      units: [{ orgUnitId: u.adm.id, includeSubunits: true }],
+      clientId,
+      body: 'Ponto facultativo amanhã.',
+    };
+    const res = await call(ctx, 'POST', '/broadcasts', { cookie: sender.cookie, body });
     expect(res.status).toBe(201);
     expect(res.body!.recipientCount).toBe(4);
-
     // Reenvio com o mesmo clientId não duplica.
-    const again = await call(ctx, 'POST', '/broadcasts', {
-      cookie: sender.cookie,
-      body: {
-        orgUnitId: u.adm.id,
-        includeSubunits: true,
-        clientId,
-        body: 'Ponto facultativo amanhã.',
-      },
-    });
+    const again = await call(ctx, 'POST', '/broadcasts', { cookie: sender.cookie, body });
     expect(again.body!.id).toBe(res.body!.id);
 
     for (const person of [elaine, aline, chefe]) {
-      const list = (await call(ctx, 'GET', '/conversations', { cookie: person.cookie }))
-        .body as unknown as Record<string, any>[];
+      const list = await listOf(person.cookie);
       expect(list).toHaveLength(1);
       expect(list[0]).toMatchObject({ peer: { id: sender.user.id }, unreadCount: 1 });
       const msgs = await call(ctx, 'GET', `/conversations/${list[0]!.id}/messages`, {
@@ -305,24 +294,21 @@ describe('comunicados em massa', () => {
       expect(msgs.body!.items).toEqual([
         expect.objectContaining({
           body: 'Ponto facultativo amanhã.',
-          broadcast: { id: res.body!.id, unitName: 'Administração', includeSubunits: true },
+          broadcast: { id: res.body!.id, label: 'Administração e subunidades' },
         }),
       ]);
     }
-    const elaineList = (await call(ctx, 'GET', '/conversations', { cookie: elaine.cookie }))
-      .body as unknown as Record<string, any>[];
-    expect(elaineList[0]!.id).toBe(existing.id);
-    expect((await call(ctx, 'GET', '/conversations', { cookie: saude.cookie })).body).toEqual([]);
+    expect((await listOf(elaine.cookie))[0]!.id).toBe(existing.id);
+    expect(await listOf(saude.cookie)).toEqual([]);
 
     // Quem enviou não ganha uma conversa por destinatário…
-    expect((await call(ctx, 'GET', '/conversations', { cookie: sender.cookie })).body).toEqual([]);
+    expect(await listOf(sender.cookie)).toEqual([]);
     // …até alguém responder.
     await call(ctx, 'POST', `/conversations/${existing.id}/messages`, {
       cookie: elaine.cookie,
       body: { clientId: cid(), body: 'Obrigada!' },
     });
-    const senderList = (await call(ctx, 'GET', '/conversations', { cookie: sender.cookie }))
-      .body as unknown as Record<string, any>[];
+    const senderList = await listOf(sender.cookie);
     expect(senderList.map((c) => c.id)).toEqual([existing.id]);
     expect(senderList[0]!.unreadCount).toBe(1);
 
@@ -331,56 +317,92 @@ describe('comunicados em massa', () => {
       .from(auditLogs)
       .where(eq(auditLogs.action, 'broadcast.sent'));
     expect(audit).toHaveLength(1);
-    expect(audit[0]!.metadata).toMatchObject({ recipients: 4, includeSubunits: true });
+    expect(audit[0]!.metadata).toMatchObject({ recipients: 4, people: 0 });
   });
 
-  it('pode limitar à unidade e leva anexos que todos os destinatários conseguem abrir', async () => {
+  it('junta pessoas e setores sem repetir quem está nos dois', async () => {
+    const { u, sender, elaine, marcus, aline, saude } = await setup();
+    const res = await post(sender.cookie, {
+      units: [{ orgUnitId: u.cpa.id, includeSubunits: false }],
+      // Elaine está no setor e também foi escolhida; Aline e a pessoa da Saúde só por nome.
+      userIds: [elaine.user.id, aline.user.id, saude.user.id, sender.user.id],
+      body: 'Reunião às 15h.',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body!.recipientCount).toBe(4);
+    for (const p of [elaine, marcus, aline, saude]) {
+      const list = await listOf(p.cookie);
+      expect(list).toHaveLength(1);
+      const msgs = await call(ctx, 'GET', `/conversations/${list[0]!.id}/messages`, {
+        cookie: p.cookie,
+      });
+      expect(msgs.body!.items).toHaveLength(1);
+      expect(msgs.body!.items[0].broadcast.label).toBe('CPA e 3 pessoas');
+    }
+  });
+
+  it('qualquer pessoa pode mandar para algumas pessoas escolhidas, mas setores exigem permissão', async () => {
+    const { u, elaine, marcus, aline } = await setup();
+    const ok = await post(elaine.cookie, {
+      userIds: [marcus.user.id, aline.user.id],
+      body: 'Bolo na copa às 16h!',
+    });
+    expect(ok.status).toBe(201);
+    expect(ok.body!.recipientCount).toBe(2);
+    const msgs = await call(
+      ctx,
+      'GET',
+      `/conversations/${(await listOf(aline.cookie))[0]!.id}/messages`,
+      { cookie: aline.cookie },
+    );
+    expect(msgs.body!.items[0].broadcast.label).toBe('2 pessoas');
+
+    const unit = await post(elaine.cookie, {
+      units: [{ orgUnitId: u.cpa.id, includeSubunits: false }],
+      body: 'Oi',
+    });
+    expect(unit.status).toBe(403);
+    const many = await post(elaine.cookie, {
+      userIds: Array.from({ length: 51 }, () => crypto.randomUUID()),
+      body: 'Oi',
+    });
+    expect(many.status).toBe(400);
+  });
+
+  it('pode limitar ao setor e leva anexos que todos os destinatários conseguem abrir', async () => {
     const { u, sender, elaine, chefe } = await setup();
     const file = await call(ctx, 'POST', '/files', {
       cookie: sender.cookie,
       ...multipart('edital.txt', Buffer.from('conteúdo do edital'), 'text/plain'),
     });
-    const res = await call(ctx, 'POST', '/broadcasts', {
-      cookie: sender.cookie,
-      body: {
-        orgUnitId: u.adm.id,
-        includeSubunits: false,
-        clientId: cid(),
-        attachmentIds: [file.body!.id],
-      },
+    const res = await post(sender.cookie, {
+      units: [{ orgUnitId: u.adm.id, includeSubunits: false }],
+      attachmentIds: [file.body!.id],
     });
     expect(res.body!.recipientCount).toBe(1);
-    expect((await call(ctx, 'GET', '/conversations', { cookie: elaine.cookie })).body).toEqual([]);
+    expect(await listOf(elaine.cookie)).toEqual([]);
     const got = await call(ctx, 'GET', `/files/${file.body!.id}`, { cookie: chefe.cookie });
     expect(got.status).toBe(200);
     expect(got.raw.toString()).toBe('conteúdo do edital');
   });
 
-  it('respeita o escopo de quem envia e exige a permissão', async () => {
+  it('respeita o escopo de quem envia', async () => {
     const { u, sender, elaine } = await setup();
-    const outside = await call(ctx, 'POST', '/broadcasts', {
-      cookie: sender.cookie,
-      body: { orgUnitId: u.saude.id, clientId: cid(), body: 'Oi' },
-    });
-    expect(outside.status).toBe(403);
-    const above = await call(ctx, 'POST', '/broadcasts', {
-      cookie: sender.cookie,
-      body: { orgUnitId: u.pref.id, clientId: cid(), body: 'Oi' },
-    });
-    expect(above.status).toBe(403);
-    const commonUser = await call(ctx, 'POST', '/broadcasts', {
-      cookie: elaine.cookie,
-      body: { orgUnitId: u.cpa.id, clientId: cid(), body: 'Oi' },
-    });
-    expect(commonUser.status).toBe(403);
+    for (const unit of [u.saude, u.pref]) {
+      const r = await post(sender.cookie, {
+        units: [{ orgUnitId: unit.id, includeSubunits: true }],
+        body: 'Oi',
+      });
+      expect(r.status).toBe(403);
+    }
     expect((await call(ctx, 'GET', '/broadcasts/scopes', { cookie: elaine.cookie })).body).toEqual({
       global: false,
       unitIds: [],
     });
-    const empty = await call(ctx, 'POST', '/broadcasts', {
-      cookie: sender.cookie,
-      body: { orgUnitId: u.cpa.id, clientId: cid(), body: '' },
-    });
-    expect(empty.status).toBe(400);
+    expect((await post(sender.cookie, { body: 'sem destino' })).status).toBe(400);
+    expect(
+      (await post(sender.cookie, { units: [{ orgUnitId: u.cpa.id, includeSubunits: false }] }))
+        .status,
+    ).toBe(400);
   });
 });

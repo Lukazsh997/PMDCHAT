@@ -2,6 +2,7 @@ import type {
   BroadcastPreview,
   BroadcastResult,
   BroadcastScopes,
+  BroadcastTargets,
   DirectoryUser,
   OrgTree,
   OrgTreeUnit,
@@ -121,16 +122,14 @@ export function canBroadcastTo(scopes: BroadcastScopes | undefined, node: TreeNo
   return [...node.ancestors.map((a) => a.id), node.id].some((id) => scopes.unitIds.includes(id));
 }
 
-export function useBroadcastPreview(unitId: string, includeSubunits: boolean, enabled: boolean) {
+/** Quantas pessoas receberiam, sem repetir quem está em mais de um setor escolhido. */
+export function useBroadcastPreview(targets: BroadcastTargets, enabled: boolean) {
   return useQuery({
-    queryKey: ['broadcast-preview', unitId, includeSubunits],
-    queryFn: () =>
-      api<BroadcastPreview>(
-        'GET',
-        `/broadcasts/preview?orgUnitId=${unitId}&includeSubunits=${includeSubunits}`,
-      ),
+    queryKey: ['broadcast-preview', targets],
+    queryFn: () => api<BroadcastPreview>('POST', '/broadcasts/preview', targets),
     enabled,
     placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 }
 

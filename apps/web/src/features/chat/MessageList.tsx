@@ -33,7 +33,6 @@ export function MessageList({
   loadOlder,
   detail,
   meId,
-  canModerate,
   actions,
 }: {
   items: ChatMessage[];
@@ -41,7 +40,6 @@ export function MessageList({
   loadOlder: () => Promise<void>;
   detail: ConversationDetail | undefined;
   meId: string;
-  canModerate: boolean;
   actions: MessageActions;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -55,7 +53,6 @@ export function MessageList({
 
   const nameOf = (id: string) => detail?.members.find((m) => m.id === id)?.displayName ?? 'Alguém';
   const isGroup = detail?.type === 'group';
-  const amAdmin = detail?.myRole === 'owner' || detail?.myRole === 'admin';
   const others = detail?.members.filter((m) => m.id !== meId) ?? [];
   const readByAll = (seq: number) => others.length > 0 && others.every((m) => m.lastReadSeq >= seq);
 
@@ -154,7 +151,6 @@ export function MessageList({
                     name={m.senderId ? nameOf(m.senderId) : ''}
                     continued={continued}
                     read={readByAll(m.seq)}
-                    canDelete={m.senderId === meId || (isGroup && amAdmin) || canModerate}
                     actions={actions}
                     now={now}
                   />
@@ -187,7 +183,6 @@ function Bubble({
   name,
   continued,
   read,
-  canDelete,
   actions,
   now,
 }: {
@@ -198,15 +193,14 @@ function Bubble({
   name: string;
   continued: boolean;
   read: boolean;
-  canDelete: boolean;
   actions: MessageActions;
 }) {
   const deleted = !!m.deletedAt;
-  const editable =
-    mine &&
-    !deleted &&
-    !m.status &&
-    now - new Date(m.createdAt).getTime() < MESSAGE_RULES.editWindowMinutes * 60_000;
+  // Só quem enviou, e só nos primeiros minutos (contados pelo relógio do servidor).
+  const age = now - new Date(m.createdAt).getTime();
+  const own = mine && !deleted && !m.status && m.type === 'text';
+  const editable = own && age < MESSAGE_RULES.editWindowMinutes * 60_000;
+  const canDelete = own && age < MESSAGE_RULES.deleteWindowMinutes * 60_000;
   const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
   const menu = [
     ...(editable
@@ -218,7 +212,7 @@ function Bubble({
           },
         ]
       : []),
-    ...(canDelete && !deleted && !m.status
+    ...(canDelete
       ? [
           {
             label: 'Apagar para todos',
@@ -253,8 +247,7 @@ function Bubble({
           {m.broadcast && !deleted && (
             <p className="mb-1 flex items-center gap-1.5 border-b border-ink/10 pb-1 text-[11px] font-semibold tracking-wide text-primary uppercase">
               <Megaphone size={12} aria-hidden="true" />
-              Comunicado para {m.broadcast.unitName}
-              {m.broadcast.includeSubunits ? ' e subunidades' : ''}
+              Comunicado para {m.broadcast.label}
             </p>
           )}
           {deleted ? (

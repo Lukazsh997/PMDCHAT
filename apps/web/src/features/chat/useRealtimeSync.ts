@@ -65,7 +65,7 @@ export function useRealtimeSync(meId: string | undefined) {
       const who = senderName ?? 'Nova mensagem';
       showNotification({
         title: m.broadcast
-          ? `Comunicado para ${m.broadcast.unitName}${senderName ? ` (${senderName})` : ''}`
+          ? `Comunicado${senderName ? ` de ${senderName}` : ''} para ${m.broadcast.label}`
           : summary?.type === 'group'
             ? `${who} em ${summary.title}`
             : who,

@@ -1,5 +1,5 @@
 import type { ConversationSummary } from '@plataforma/contracts';
-import { BellOff, MessageSquarePlus, Search, Users } from 'lucide-react';
+import { BellOff, Megaphone, MessageSquarePlus, Search, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { NavLink } from 'react-router';
 import { Avatar, IconButton, Menu, Spinner } from '@/components/ui';
@@ -17,11 +17,13 @@ export function ConversationList({
   meId,
   onNewChat,
   onNewGroup,
+  onBroadcast,
   canCreate,
 }: {
   meId: string;
   onNewChat: () => void;
   onNewGroup: () => void;
+  onBroadcast: () => void;
   canCreate: boolean;
 }) {
   const conversations = useConversations();
@@ -38,6 +40,16 @@ export function ConversationList({
       <header className="flex items-center gap-2 px-4 pt-4 pb-2">
         <h1 className="flex-1 text-lg font-bold">Conversas</h1>
         {canCreate && (
+          <button
+            type="button"
+            onClick={onBroadcast}
+            title="Enviar a mesma mensagem para várias pessoas ou setores"
+            className="flex h-9 items-center gap-1.5 rounded-full border border-primary/40 bg-primary-soft px-3 text-sm font-semibold text-primary hover:border-primary"
+          >
+            <Megaphone size={16} aria-hidden="true" /> Comunicado
+          </button>
+        )}
+        {canCreate && (
           <Menu
             label="Nova conversa"
             items={[
@@ -50,6 +62,11 @@ export function ConversationList({
                 label: 'Novo grupo',
                 icon: <Users size={16} aria-hidden="true" />,
                 onSelect: onNewGroup,
+              },
+              {
+                label: 'Comunicado para várias pessoas',
+                icon: <Megaphone size={16} aria-hidden="true" />,
+                onSelect: onBroadcast,
               },
             ]}
             trigger={(p) => (

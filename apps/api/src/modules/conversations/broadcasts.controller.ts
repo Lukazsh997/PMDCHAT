@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
 import {
   type BroadcastPreview,
   type BroadcastResult,
   type BroadcastScopes,
+  broadcastPreviewSchema,
   sendBroadcastSchema,
 } from '@plataforma/contracts';
 import type { FastifyRequest } from 'fastify';
@@ -10,13 +11,8 @@ import { z } from 'zod';
 import { clientInfo, CurrentAuth } from '../../common/request-context.js';
 import { ZodPipe } from '../../common/zod.pipe.js';
 import type { AuthContext } from '../auth/index.js';
-import { PermissionService, RequirePermission, requestGrants } from '../rbac/index.js';
+import { PermissionService, requestGrants } from '../rbac/index.js';
 import { BroadcastsService } from './broadcasts.service.js';
-
-const previewQuery = z.object({
-  orgUnitId: z.uuid(),
-  includeSubunits: z.enum(['true', 'false']).transform((v) => v === 'true'),
-});
 
 @Controller('broadcasts')
 export class BroadcastsController {
@@ -31,21 +27,20 @@ export class BroadcastsController {
     return this.broadcasts.scopes(await requestGrants(req, this.permissions));
   }
 
-  @Get('preview')
-  @RequirePermission('broadcast.send')
+  /** Quantas pessoas receberiam (sem repetir quem está em mais de um setor escolhido). */
+  @Post('preview')
+  @HttpCode(200)
   async preview(
     @CurrentAuth() auth: AuthContext,
-    @Query(new ZodPipe(previewQuery)) q: z.infer<typeof previewQuery>,
+    @Body(new ZodPipe(broadcastPreviewSchema)) body: z.output<typeof broadcastPreviewSchema>,
     @Req() req: FastifyRequest,
   ): Promise<BroadcastPreview> {
     const grants = await requestGrants(req, this.permissions);
-    return {
-      recipientCount: await this.broadcasts.preview(auth, grants, q.orgUnitId, q.includeSubunits),
-    };
+    return { recipientCount: await this.broadcasts.preview(auth, grants, body) };
   }
 
+  /** Setores exigem a permissão de comunicados; pessoas escolhidas, não (ver o serviço). */
   @Post()
-  @RequirePermission('broadcast.send')
   async send(
     @CurrentAuth() auth: AuthContext,
     @Body(new ZodPipe(sendBroadcastSchema)) body: z.output<typeof sendBroadcastSchema>,

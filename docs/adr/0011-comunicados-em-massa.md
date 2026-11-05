@@ -19,3 +19,9 @@ manter a lista de membros sincronizada com o organograma e exporia as respostas 
 **Consequências.** Quem envia não ganha uma conversa por destinatário na lista: a conversa
 direta só aparece para quem enviou quando houver algo além dos próprios comunicados (uma
 resposta, por exemplo). Os anexos são gravados uma vez e ligados a todas as mensagens.
+
+**Atualização (05/11/2026, tarde).** O comunicado sai direto da lista de conversas (botão
+"Comunicado"), numa única tela. Na mesma busca se escolhem pessoas e setores, e o servidor
+junta todos sem repetir ninguém. Qualquer pessoa pode mandar para até 50 pessoas escolhidas uma
+a uma, o que equivale a mandar mensagens individuais. Escolher setores inteiros continua
+exigindo `broadcast.send`. O balão mostra para quem foi ("DCA e 3 pessoas") sem revelar os nomes.

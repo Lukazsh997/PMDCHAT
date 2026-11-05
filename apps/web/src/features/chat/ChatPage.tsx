@@ -2,6 +2,7 @@ import { MessagesSquare } from 'lucide-react';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { useMe } from '../auth/auth-api';
+import { BroadcastComposer } from './BroadcastComposer';
 import { ConversationList } from './ConversationList';
 import { ConversationView } from './ConversationView';
 import { NewChatDialog, NewGroupDialog } from './NewConversationDialogs';
@@ -11,7 +12,7 @@ import { NotificationBanner } from './NotificationBanner';
 export function ChatPage() {
   const me = useMe().data!;
   const { conversationId } = useParams();
-  const [dialog, setDialog] = useState<'chat' | 'group' | null>(null);
+  const [dialog, setDialog] = useState<'chat' | 'group' | 'broadcast' | null>(null);
   const canCreate = me.user.kind !== 'guest';
 
   return (
@@ -25,6 +26,7 @@ export function ChatPage() {
           canCreate={canCreate}
           onNewChat={() => setDialog('chat')}
           onNewGroup={() => setDialog('group')}
+          onBroadcast={() => setDialog('broadcast')}
         />
       </aside>
       <main className={`relative min-w-0 flex-1 ${conversationId ? 'flex' : 'hidden md:flex'}`}>
@@ -50,6 +52,7 @@ export function ChatPage() {
       </main>
       <NewChatDialog open={dialog === 'chat'} onClose={() => setDialog(null)} />
       <NewGroupDialog open={dialog === 'group'} onClose={() => setDialog(null)} />
+      <BroadcastComposer open={dialog === 'broadcast'} onClose={() => setDialog(null)} />
     </div>
   );
 }

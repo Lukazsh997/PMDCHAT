@@ -135,7 +135,7 @@ describe('conversas diretas', () => {
 });
 
 describe('edição e exclusão', () => {
-  it('edita até 15 minutos, guardando o texto anterior', async () => {
+  it('edita até 10 minutos, guardando o texto anterior', async () => {
     const { ana, bia } = await people();
     const conv = (
       await call(ctx, 'POST', '/conversations/direct', {
@@ -160,13 +160,45 @@ describe('edição e exclusão', () => {
 
     await ctx.db
       .update(messages)
-      .set({ createdAt: new Date(Date.now() - 16 * 60_000) })
+      .set({ createdAt: new Date(Date.now() - 10 * 60_000 - 5_000) })
       .where(eq(messages.id, msg.id));
     const late = await call(ctx, 'PATCH', `/messages/${msg.id}`, {
       cookie: ana.cookie,
       body: { body: 'tarde demais' },
     });
     expect(late.status).toBe(409);
+    expect(late.body?.message).toContain('10 minutos');
+  });
+
+  it('o prazo vale pela hora de envio no servidor, não pelo relógio de quem pede', async () => {
+    const { ana, bia } = await people();
+    const conv = (
+      await call(ctx, 'POST', '/conversations/direct', {
+        cookie: ana.cookie,
+        body: { userId: bia.user.id },
+      })
+    ).body!;
+    const msg = (await send(ana.cookie, conv.id, 'quase no limite')).body!;
+    await ctx.db
+      .update(messages)
+      .set({ createdAt: new Date(Date.now() - 9 * 60_000) })
+      .where(eq(messages.id, msg.id));
+    // Um cabeçalho Date falso (relógio adiantado) não muda nada: quem decide é o banco.
+    const ok = await call(ctx, 'PATCH', `/messages/${msg.id}`, {
+      cookie: ana.cookie,
+      body: { body: 'ainda deu' },
+      headers: { date: new Date(Date.now() + 3_600_000).toUTCString() },
+    });
+    expect(ok.status).toBe(200);
+    await ctx.db
+      .update(messages)
+      .set({ createdAt: new Date(Date.now() - 11 * 60_000) })
+      .where(eq(messages.id, msg.id));
+    const late = await call(ctx, 'DELETE', `/messages/${msg.id}`, { cookie: ana.cookie });
+    expect(late.status).toBe(409);
+    expect(late.body?.message).toContain('apagadas até 10 minutos');
+    const [row] = await ctx.db.select().from(messages).where(eq(messages.id, msg.id));
+    expect(row!.deletedAt).toBeNull();
   });
 
   it('apagar esconde o conteúdo na hora e a purga remove em definitivo após 48 h', async () => {
@@ -204,22 +236,6 @@ describe('edição e exclusão', () => {
     expect(r.purged).toBe(1);
     [row] = await ctx.db.select().from(messages).where(eq(messages.id, msg.id));
     expect(row).toMatchObject({ body: '', purgedAt: expect.any(Date) });
-  });
-
-  it('moderador apaga mensagem de qualquer pessoa', async () => {
-    const { ana, bia } = await people();
-    const mod = await signedIn(ctx, { username: 'moderador', role: 'moderator' });
-    const conv = (
-      await call(ctx, 'POST', '/conversations/direct', {
-        cookie: ana.cookie,
-        body: { userId: mod.user.id },
-      })
-    ).body!;
-    const msg = (await send(ana.cookie, conv.id, 'conteúdo impróprio')).body!;
-    expect((await call(ctx, 'DELETE', `/messages/${msg.id}`, { cookie: mod.cookie })).status).toBe(
-      200,
-    );
-    void bia;
   });
 });
 
@@ -300,7 +316,7 @@ describe('grupos', () => {
     ).toEqual(['caio:owner', 'bia:member']);
   });
 
-  it('administrador do grupo apaga mensagens de outros; membro comum não', async () => {
+  it('ninguém apaga mensagem de outra pessoa, nem o dono do grupo', async () => {
     const { ana, bia, caio } = await people();
     const g = (
       await call(ctx, 'POST', '/conversations/group', {
@@ -313,6 +329,13 @@ describe('grupos', () => {
       403,
     );
     expect((await call(ctx, 'DELETE', `/messages/${m.id}`, { cookie: ana.cookie })).status).toBe(
+      403,
+    );
+    expect(
+      (await call(ctx, 'PATCH', `/messages/${m.id}`, { cookie: ana.cookie, body: { body: 'x' } }))
+        .status,
+    ).toBe(403);
+    expect((await call(ctx, 'DELETE', `/messages/${m.id}`, { cookie: bia.cookie })).status).toBe(
       200,
     );
   });

@@ -1,4 +1,6 @@
 import { ArrowLeft, Info, Upload } from 'lucide-react';
+import { MESSAGE_RULES } from '@plataforma/contracts';
+import { serverNow } from '@/lib/server-clock';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { Alert, Avatar, Button, Dialog, IconButton, Spinner, toast } from '@/components/ui';
@@ -154,7 +156,6 @@ export function ConversationView({ conversationId }: { conversationId: string })
             loadOlder={messages.loadOlder}
             detail={d}
             meId={meId}
-            canModerate={me.permissions.includes('messages.delete_any')}
             actions={{
               onEdit: setEditing,
               onDelete: setConfirmDelete,
@@ -183,7 +184,11 @@ export function ConversationView({ conversationId }: { conversationId: string })
               const last = items.findLast(
                 (m) => m.senderId === meId && m.type === 'text' && !m.deletedAt && !m.status,
               );
-              if (last && Date.now() - new Date(last.createdAt).getTime() < 15 * 60_000)
+              if (
+                last &&
+                serverNow() - new Date(last.createdAt).getTime() <
+                  MESSAGE_RULES.editWindowMinutes * 60_000
+              )
                 setEditing(last);
             }}
             onSubmitEdit={async (body) => {

@@ -110,9 +110,14 @@ export const broadcasts = pgTable(
   {
     id: id(),
     senderId: uuid().references(() => users.id, { onDelete: 'set null' }),
+    /** Primeiro setor escolhido (o detalhe completo fica na auditoria). */
     orgUnitId: uuid().references(() => orgUnits.id, { onDelete: 'set null' }),
-    /** Nome da unidade no momento do envio (a unidade pode ser renomeada depois). */
-    unitName: varchar({ length: 200 }).notNull(),
+    /**
+     * Para quem foi, como aparece no balão ("SEAD e subunidades, DCA e 3 pessoas"),
+     * fixado no envio: a unidade pode ser renomeada depois.
+     */
+    label: varchar('unit_name', { length: 200 }).notNull(),
+    /** Algum setor foi escolhido com as subunidades. */
     includeSubunits: boolean().notNull(),
     body: text().notNull().default(''),
     recipientCount: integer().notNull(),

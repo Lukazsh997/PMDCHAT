@@ -12,7 +12,6 @@ export const PERMISSIONS = {
   'org.manage': 'Gerenciar secretarias, subsecretarias e setores',
   'roles.assign': 'Atribuir e remover papéis',
   'audit.read': 'Consultar o registro de auditoria',
-  'messages.delete_any': 'Apagar mensagens de qualquer pessoa (moderação)',
   'broadcast.send': 'Enviar comunicados em massa para unidades',
   'users.delete': 'Excluir usuários definitivamente do diretório',
 } as const;
@@ -43,12 +42,6 @@ export const ROLES = {
     description: 'Envia comunicados em massa para a unidade e as unidades abaixo dela',
     permissions: ['broadcast.send'] as Permission[],
     scoped: true,
-  },
-  moderator: {
-    name: 'Moderador',
-    description: 'Pode apagar mensagens de qualquer conversa',
-    permissions: ['messages.delete_any'] as Permission[],
-    scoped: false,
   },
 } as const satisfies Record<
   string,
