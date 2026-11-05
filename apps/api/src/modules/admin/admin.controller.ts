@@ -18,7 +18,12 @@ import {
   assignRoleSchema,
   type AuditPage,
   createUserSchema,
+  type CreateRoleRequest,
+  createRoleSchema,
   type CreateUserResponse,
+  type RoleDefinition,
+  type UpdateRoleRequest,
+  updateRoleSchema,
   type DeleteUserRequest,
   deleteUserSchema,
   setUserStatusSchema,
@@ -33,6 +38,7 @@ import { ZodPipe } from '../../common/zod.pipe.js';
 import { PermissionService, RequirePermission, requestGrants } from '../rbac/index.js';
 import { AdminUsersService } from './admin-users.service.js';
 import { AuditQueryService } from './audit-query.service.js';
+import { RolesService } from './roles.service.js';
 
 const uuidParam = new ZodPipe(z.uuid());
 const page = z.coerce.number().int().min(1).default(1);
@@ -62,6 +68,7 @@ export class AdminController {
     private readonly adminUsers: AdminUsersService,
     private readonly auditQuery: AuditQueryService,
     private readonly permissions: PermissionService,
+    private readonly rolesService: RolesService,
   ) {}
 
   @Get('stats')
@@ -173,6 +180,41 @@ export class AdminController {
     @Req() req: FastifyRequest,
   ): Promise<AdminUser> {
     return this.adminUsers.removeRole(await this.actor(req), id, assignmentId);
+  }
+
+  @Get('roles')
+  @RequirePermission('users.read')
+  roles(): Promise<RoleDefinition[]> {
+    return this.rolesService.list();
+  }
+
+  @Post('roles')
+  @RequirePermission('roles.manage')
+  async createRole(
+    @Body(new ZodPipe(createRoleSchema)) body: CreateRoleRequest,
+    @Req() req: FastifyRequest,
+  ): Promise<RoleDefinition> {
+    return this.rolesService.create(await this.actor(req), body);
+  }
+
+  @Patch('roles/:key')
+  @RequirePermission('roles.manage')
+  async updateRole(
+    @Param('key', new ZodPipe(z.string().max(32))) key: string,
+    @Body(new ZodPipe(updateRoleSchema)) body: UpdateRoleRequest,
+    @Req() req: FastifyRequest,
+  ): Promise<RoleDefinition> {
+    return this.rolesService.update(await this.actor(req), key, body);
+  }
+
+  @Delete('roles/:key')
+  @HttpCode(204)
+  @RequirePermission('roles.manage')
+  async deleteRole(
+    @Param('key', new ZodPipe(z.string().max(32))) key: string,
+    @Req() req: FastifyRequest,
+  ): Promise<void> {
+    await this.rolesService.remove(await this.actor(req), key);
   }
 
   @Get('audit')

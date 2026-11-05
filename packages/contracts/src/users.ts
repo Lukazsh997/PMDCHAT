@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { usernameSchema } from './auth.js';
-import { type Permission, ROLE_KEYS, type RoleKey } from './rbac.js';
+import type { Permission, RoleKey } from './rbac.js';
 
 export const userStatusSchema = z.enum(['active', 'blocked', 'disabled']);
 export type UserStatus = z.infer<typeof userStatusSchema>;
@@ -92,6 +92,7 @@ export const setUserStatusSchema = z.object({ status: userStatusSchema });
 export interface RoleAssignment {
   id: string;
   role: RoleKey;
+  roleName: string;
   orgUnit: OrgUnitRef | null;
   createdAt: string;
 }
@@ -115,7 +116,7 @@ export interface CreateUserResponse {
 }
 
 export const assignRoleSchema = z.object({
-  role: z.enum(ROLE_KEYS as [RoleKey, ...RoleKey[]]),
+  role: z.string().trim().min(1).max(32),
   orgUnitId: z.uuid().nullable().optional(),
 });
 export type AssignRoleRequest = z.infer<typeof assignRoleSchema>;

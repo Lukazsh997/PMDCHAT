@@ -5,6 +5,7 @@ import { AdminLayout } from './features/admin/AdminLayout';
 import { AuditPage } from './features/admin/AuditPage';
 import { OrgPage } from './features/admin/OrgPage';
 import { OverviewPage } from './features/admin/OverviewPage';
+import { RolesPage } from './features/admin/RolesPage';
 import { UsersPage } from './features/admin/UsersPage';
 import { LoginPage } from './features/auth/LoginPage';
 import { RequireAuth } from './features/auth/RequireAuth';
@@ -43,6 +44,7 @@ export function App() {
             <Route index element={<OverviewPage />} />
             <Route path="usuarios" element={<UsersPage />} />
             <Route path="organograma" element={<OrgPage />} />
+            <Route path="papeis" element={<RolesPage />} />
             <Route path="auditoria" element={<AuditPage />} />
           </Route>
         </Route>

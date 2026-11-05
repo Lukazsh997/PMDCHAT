@@ -5,10 +5,11 @@ import { UsersModule } from '../users/index.js';
 import { AdminUsersService } from './admin-users.service.js';
 import { AdminController } from './admin.controller.js';
 import { AuditQueryService } from './audit-query.service.js';
+import { RolesService } from './roles.service.js';
 
 @Module({
   imports: [AuthModule, OrgModule, UsersModule],
   controllers: [AdminController],
-  providers: [AdminUsersService, AuditQueryService],
+  providers: [AdminUsersService, AuditQueryService, RolesService],
 })
 export class AdminModule {}

@@ -4,8 +4,6 @@ import {
   type AdminUserList,
   type AssignRoleRequest,
   type RoleAssignment,
-  type RoleKey,
-  ROLES,
   type UpdateUserRequest,
   type UserStatus,
   createUserSchema,
@@ -19,14 +17,16 @@ import {
   orgUnits,
   type OrgUnitRow,
   roleAssignments,
+  roles,
   userCredentials,
   type UserRow,
   users,
 } from '../../database/schema/index.js';
 import { AuditService } from '../audit/index.js';
+import { RolesService } from './roles.service.js';
 import { PasswordService, SessionService } from '../auth/index.js';
 import { OrgService } from '../org/index.js';
-import type { Grants } from '../rbac/index.js';
+import { type Grants, rolePermissions } from '../rbac/index.js';
 import { AvatarService, unitRef, UsersService } from '../users/index.js';
 
 type CreateInput = z.output<typeof createUserSchema>;
@@ -60,6 +60,7 @@ export class AdminUsersService {
     private readonly audit: AuditService,
     private readonly avatars: AvatarService,
     private readonly events: DomainEvents,
+    private readonly roles: RolesService,
   ) {}
 
   /** Lotação ou situação mudou: canais de unidade se ajustam. */
@@ -318,7 +319,13 @@ export class AdminUsersService {
   async assignRole(actor: Actor, userId: string, input: AssignRoleRequest): Promise<AdminUser> {
     this.assertCanAssignRoles(actor);
     await this.loadInScope(actor, userId, 'users.read');
-    const role = ROLES[input.role];
+    const role = await this.roles.get(input.role).catch(() => {
+      throw new AppException(400, 'VALIDATION_FAILED', 'Dados inválidos', {
+        role: ['Papel não encontrado'],
+      });
+    });
+    // Quem atribui precisa ter tudo o que o papel concede.
+    this.roles.assertCanGrant(actor, rolePermissions(role));
     const unitId = role.scoped ? (input.orgUnitId ?? null) : null;
     if (role.scoped && !unitId) {
       throw new AppException(400, 'VALIDATION_FAILED', 'Dados inválidos', {
@@ -404,18 +411,19 @@ export class AdminUsersService {
   private async rolesOf(userIds: string[]): Promise<Map<string, RoleAssignment[]>> {
     if (!userIds.length) return new Map();
     const rows = await this.db
-      .select({ a: roleAssignments, unit: orgUnits })
+      .select({ a: roleAssignments, unit: orgUnits, roleName: roles.name })
       .from(roleAssignments)
+      .innerJoin(roles, eq(roles.key, roleAssignments.role))
       .leftJoin(orgUnits, eq(orgUnits.id, roleAssignments.orgUnitId))
       .where(inArray(roleAssignments.userId, userIds))
       .orderBy(desc(roleAssignments.createdAt));
     const map = new Map<string, RoleAssignment[]>();
     for (const r of rows) {
-      if (!(r.a.role in ROLES)) continue;
       const list = map.get(r.a.userId) ?? [];
       list.push({
         id: r.a.id,
-        role: r.a.role as RoleKey,
+        role: r.a.role,
+        roleName: r.roleName,
         orgUnit: unitRef(r.unit),
         createdAt: r.a.createdAt.toISOString(),
       });

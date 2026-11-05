@@ -57,6 +57,13 @@
       "when": 1793894934020,
       "tag": "0007_fase2_canais",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793895449560,
+      "tag": "0008_fase2_papeis",
+      "breakpoints": true
     }
   ]
 }
