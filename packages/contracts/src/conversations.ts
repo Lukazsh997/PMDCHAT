@@ -70,6 +70,14 @@ export interface Attachment {
   height: number | null;
 }
 
+/** Mensagem entregue por um comunicado em massa. */
+export interface BroadcastRef {
+  id: string;
+  /** Unidade de destino, ex.: "Secretaria de Administração (SEAD)". */
+  unitName: string;
+  includeSubunits: boolean;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -84,6 +92,7 @@ export interface Message {
   createdAt: string;
   editedAt: string | null;
   deletedAt: string | null;
+  broadcast: BroadcastRef | null;
 }
 
 export interface MessagePage {
@@ -140,3 +149,46 @@ export const editMessageSchema = z.object({
 });
 
 export const markReadSchema = z.object({ seq: z.number().int().min(0) });
+
+/* ------------------------------ Comunicados ----------------------------- */
+
+export const BROADCAST_RULES = {
+  /** Teto de destinatários por envio. */
+  maxRecipients: 5000,
+} as const;
+
+/**
+ * Comunicado em massa: entregue como mensagem direta a cada pessoa ativa lotada na
+ * unidade (e, se marcado, nas subunidades). Respostas chegam em particular a quem enviou.
+ */
+export const sendBroadcastSchema = z
+  .object({
+    orgUnitId: z.uuid(),
+    includeSubunits: z.boolean().default(true),
+    clientId: z.string().min(8).max(64),
+    body: z.string().max(MESSAGE_RULES.maxBodyLength, 'Mensagem muito longa').default(''),
+    attachmentIds: z.array(z.uuid()).max(MESSAGE_RULES.maxAttachmentsPerMessage).default([]),
+  })
+  .transform((v) => ({ ...v, body: v.body.trim() }))
+  .refine((v) => v.body.length > 0 || v.attachmentIds.length > 0, {
+    message: 'Escreva o comunicado ou anexe um arquivo',
+    path: ['body'],
+  });
+export type SendBroadcastRequest = z.input<typeof sendBroadcastSchema>;
+
+export interface BroadcastResult {
+  id: string;
+  recipientCount: number;
+}
+
+/** Onde a pessoa pode enviar comunicados. */
+export interface BroadcastScopes {
+  /** Em qualquer unidade. */
+  global: boolean;
+  /** Unidades (e as abaixo delas) em que pode enviar. */
+  unitIds: string[];
+}
+
+export interface BroadcastPreview {
+  recipientCount: number;
+}

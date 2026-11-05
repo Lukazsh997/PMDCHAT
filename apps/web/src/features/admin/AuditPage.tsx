@@ -18,6 +18,9 @@ const ACTIONS: Record<string, string> = {
   'user.created': 'Criou usuário',
   'user.updated': 'Alterou dados de usuário',
   'user.status_changed': 'Alterou situação de usuário',
+  'user.deleted': 'Excluiu usuário',
+  'user.avatar_changed': 'Trocou a foto de perfil',
+  'user.avatar_removed': 'Removeu foto de perfil',
   'role.assigned': 'Atribuiu papel',
   'role.removed': 'Removeu papel',
   'org_unit.created': 'Criou unidade',
@@ -30,6 +33,7 @@ const ACTIONS: Record<string, string> = {
   'message.deleted': 'Apagou a própria mensagem',
   'message.deleted_by_moderator': 'Apagou mensagem de outra pessoa',
   'file.rejected': 'Arquivo barrado pelo antivírus',
+  'broadcast.sent': 'Enviou comunicado em massa',
 };
 
 const GROUPS = [
@@ -41,6 +45,7 @@ const GROUPS = [
   ['conversation.', 'Grupos'],
   ['message.', 'Mensagens apagadas'],
   ['file.', 'Arquivos barrados'],
+  ['broadcast.', 'Comunicados'],
 ] as const;
 
 export function AuditPage() {

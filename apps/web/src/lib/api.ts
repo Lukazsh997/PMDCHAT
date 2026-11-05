@@ -59,10 +59,11 @@ export function uploadFile<T>(
   file: File,
   onProgress?: (fraction: number) => void,
   signal?: AbortSignal,
+  method: 'POST' | 'PUT' = 'POST',
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${API_PREFIX}${path}`);
+    xhr.open(method, `${API_PREFIX}${path}`);
     xhr.withCredentials = true;
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
     xhr.onload = () => {

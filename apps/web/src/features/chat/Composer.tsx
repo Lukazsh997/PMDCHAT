@@ -144,7 +144,7 @@ export const Composer = forwardRef<
   return (
     <div className="border-t border-line bg-surface px-3 py-2.5 md:px-4">
       {editing && (
-        <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-[var(--radius-control)] bg-ipe-soft px-3 py-1.5 text-sm">
+        <div className="mb-2 flex items-center gap-2 rounded-[var(--radius-control)] bg-accent-soft px-3 py-1.5 text-sm">
           <span className="flex-1 font-semibold">Editando mensagem</span>
           <span className="text-xs text-muted">Esc para cancelar</span>
           <IconButton label="Cancelar edição" className="h-7 w-7" onClick={onCancelEdit}>
@@ -153,7 +153,7 @@ export const Composer = forwardRef<
         </div>
       )}
       {pending.length > 0 && (
-        <ul className="mx-auto mb-2 flex max-w-3xl flex-wrap gap-2" aria-label="Anexos">
+        <ul className="mb-2 flex flex-wrap gap-2" aria-label="Anexos">
           {pending.map((p) => (
             <li
               key={p.key}
@@ -192,7 +192,7 @@ export const Composer = forwardRef<
           ))}
         </ul>
       )}
-      <div className="mx-auto flex max-w-3xl items-end gap-1.5">
+      <div className="flex items-end gap-1.5">
         <IconButton
           label="Anexar arquivo"
           onClick={() => fileInput.current?.click()}

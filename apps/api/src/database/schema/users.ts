@@ -37,6 +37,8 @@ export const users = pgTable(
     accessExpiresAt: timestamp({ withTimezone: true }),
     mustChangePassword: boolean().notNull().default(false),
     lastLoginAt: timestamp({ withTimezone: true }),
+    /** Foto de perfil: caminho relativo em FILES_DIR (avatars/…). */
+    avatarKey: varchar({ length: 255 }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: timestamp({ withTimezone: true }),

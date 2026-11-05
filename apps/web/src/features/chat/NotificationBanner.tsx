@@ -35,7 +35,7 @@ export function NotificationBanner() {
         : 'Receba um aviso quando chegar mensagem, mesmo com a aba em segundo plano.';
 
   return (
-    <div className="flex items-start gap-2.5 border-b border-line bg-ipe-soft px-4 py-2.5 text-sm">
+    <div className="flex items-start gap-2.5 border-b border-line bg-accent-soft px-4 py-2.5 text-sm">
       <BellRing size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <p>{text}</p>

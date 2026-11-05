@@ -124,6 +124,7 @@ function ConversationItem({ c, meId }: { c: ConversationSummary; meId: string })
       <Avatar
         name={c.title}
         size={44}
+        src={c.peer?.avatarUrl}
         group={c.type === 'group'}
         presence={c.type === 'direct' ? (presence ?? 'offline') : undefined}
       />
@@ -147,7 +148,7 @@ function ConversationItem({ c, meId }: { c: ConversationSummary; meId: string })
           {muted && <BellOff size={14} className="shrink-0 text-muted" aria-label="Silenciada" />}
           {unread && (
             <span
-              className={`min-w-5 shrink-0 rounded-full px-1.5 text-center text-xs leading-5 font-bold ${muted ? 'bg-line text-muted' : 'bg-ipe text-rail-strong'}`}
+              className={`min-w-5 shrink-0 rounded-full px-1.5 text-center text-xs leading-5 font-bold ${muted ? 'bg-line text-muted' : 'bg-accent text-rail-strong'}`}
               aria-label={`${c.unreadCount} não lidas`}
             >
               {c.unreadCount > 99 ? '99+' : c.unreadCount}

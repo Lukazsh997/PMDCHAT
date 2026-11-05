@@ -26,7 +26,7 @@ import { AuditService } from '../audit/index.js';
 import { PasswordService, SessionService } from '../auth/index.js';
 import { OrgService } from '../org/index.js';
 import type { Grants } from '../rbac/index.js';
-import { unitRef, UsersService } from '../users/index.js';
+import { AvatarService, unitRef, UsersService } from '../users/index.js';
 
 type CreateInput = z.output<typeof createUserSchema>;
 interface Actor {
@@ -57,6 +57,7 @@ export class AdminUsersService {
     private readonly sessions: SessionService,
     private readonly org: OrgService,
     private readonly audit: AuditService,
+    private readonly avatars: AvatarService,
   ) {}
 
   async list(actor: Actor, f: ListFilter): Promise<AdminUserList> {
@@ -229,6 +230,78 @@ export class AdminUsersService {
     await this.users.setMfa(id, null);
     await this.sessions.revokeAllForUser(id, 'mfa_reset');
     await this.record(actor, 'auth.mfa_reset', id, {});
+  }
+
+  /**
+   * Exclusão de usuário (somente super administrador). É uma exclusão lógica com
+   * anonimização: a pessoa some do diretório e não entra mais; login, e-mail, senha,
+   * MFA, foto e papéis são apagados. O nome continua no histórico das conversas, que
+   * é documento público e precisa ser preservado.
+   */
+  async remove(actor: Actor, id: string, confirmUsername: string): Promise<void> {
+    if (!actor.grants.hasGlobal('users.delete')) {
+      throw new AppException(
+        403,
+        'FORBIDDEN',
+        'Somente o super administrador pode excluir usuários.',
+      );
+    }
+    if (id === actor.id) {
+      throw new AppException(409, 'CONFLICT', 'Você não pode excluir a sua própria conta.');
+    }
+    const { user } = await this.loadInScope(actor, id, 'users.manage');
+    if (confirmUsername.trim().toLowerCase() !== user.username) {
+      throw new AppException(400, 'VALIDATION_FAILED', 'Dados inválidos', {
+        confirmUsername: ['Digite o login exatamente como aparece para confirmar'],
+      });
+    }
+    const [isSuper] = await this.db
+      .select({ n: count() })
+      .from(roleAssignments)
+      .where(and(eq(roleAssignments.userId, id), eq(roleAssignments.role, 'super_admin')));
+    if ((isSuper?.n ?? 0) > 0) {
+      const [all] = await this.db
+        .select({ n: count() })
+        .from(roleAssignments)
+        .where(eq(roleAssignments.role, 'super_admin'));
+      if ((all?.n ?? 0) <= 1) {
+        throw new AppException(
+          409,
+          'CONFLICT',
+          'O sistema precisa de ao menos um super administrador.',
+        );
+      }
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({
+          deletedAt: new Date(),
+          status: 'disabled',
+          // Libera o login para reuso; "#" nunca é aceito num login, então não colide.
+          username: `#excluido-${id}`,
+          email: null,
+          jobTitle: null,
+          externalId: null,
+        })
+        .where(eq(users.id, id));
+      await tx.delete(roleAssignments).where(eq(roleAssignments.userId, id));
+      await tx.delete(userCredentials).where(eq(userCredentials.userId, id));
+    });
+    await this.sessions.revokeAllForUser(id, 'user_deleted');
+    await this.avatars.remove(id);
+    await this.record(actor, 'user.deleted', id, {
+      username: user.username,
+      displayName: user.displayName,
+    });
+  }
+
+  /** Remove a foto de alguém (ex.: imagem imprópria). */
+  async removeAvatar(actor: Actor, id: string): Promise<AdminUser> {
+    await this.loadInScope(actor, id, 'users.manage');
+    if (await this.avatars.remove(id)) await this.record(actor, 'user.avatar_removed', id, {});
+    return this.get(actor, id);
   }
 
   async assignRole(actor: Actor, userId: string, input: AssignRoleRequest): Promise<AdminUser> {

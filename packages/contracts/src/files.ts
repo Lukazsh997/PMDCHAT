@@ -51,3 +51,10 @@ export interface UploadedFile {
 
 export const fileUrl = (id: string) => `/api/v1/files/${id}`;
 export const thumbnailUrl = (id: string) => `/api/v1/files/${id}/thumbnail`;
+
+/** Foto de perfil: recortada em quadrado e convertida para WebP no servidor. */
+export const AVATAR_RULES = {
+  maxSizeBytes: 5 * 1024 * 1024,
+  sizePx: 256,
+  acceptedTypes: ['image/jpeg', 'image/png', 'image/webp'],
+} as const;

@@ -99,6 +99,18 @@ export function useUserMutations() {
         api<AdminUser>('POST', `/admin/users/${v.id}/roles`, v.body),
       onSuccess: refresh,
     }),
+    remove: useMutation({
+      mutationFn: (v: { id: string; confirmUsername: string }) =>
+        api<void>('DELETE', `/admin/users/${v.id}`, { confirmUsername: v.confirmUsername }),
+      onSuccess: (_, v) => {
+        qc.removeQueries({ queryKey: adminKeys.user(v.id) });
+        refresh();
+      },
+    }),
+    removeAvatar: useMutation({
+      mutationFn: (id: string) => api<AdminUser>('DELETE', `/admin/users/${id}/avatar`),
+      onSuccess: refresh,
+    }),
     removeRole: useMutation({
       mutationFn: (v: { id: string; assignmentId: string }) =>
         api<AdminUser>('DELETE', `/admin/users/${v.id}/roles/${v.assignmentId}`),

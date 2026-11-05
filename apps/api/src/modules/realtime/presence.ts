@@ -54,6 +54,17 @@ export class PresenceStore {
   }
 }
 
+/**
+ * Pessoas conectadas agora (disponíveis ou ausentes). Confere a chave de estado de
+ * cada uma: se uma instância da API caiu, o registro dela expira e não é contado.
+ */
+export async function connectedUserIds(redis: Redis): Promise<string[]> {
+  const ids = await redis.smembers(ONLINE_SET);
+  if (!ids.length) return [];
+  const states = await redis.mget(ids.map(statusKey));
+  return ids.filter((_, i) => states[i] === 'online' || states[i] === 'away');
+}
+
 function aggregate(values: string[]): PresenceStatus {
   if (values.includes('online')) return 'online';
   return values.length ? 'away' : 'offline';

@@ -13,6 +13,8 @@ export const PERMISSIONS = {
   'roles.assign': 'Atribuir e remover papéis',
   'audit.read': 'Consultar o registro de auditoria',
   'messages.delete_any': 'Apagar mensagens de qualquer pessoa (moderação)',
+  'broadcast.send': 'Enviar comunicados em massa para unidades',
+  'users.delete': 'Excluir usuários definitivamente do diretório',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -27,7 +29,7 @@ export const ROLES = {
   unit_admin: {
     name: 'Administrador de unidade',
     description: 'Gerencia os usuários da unidade e das unidades abaixo dela',
-    permissions: ['admin.access', 'users.read', 'users.manage'] as Permission[],
+    permissions: ['admin.access', 'users.read', 'users.manage', 'broadcast.send'] as Permission[],
     scoped: true,
   },
   auditor: {
@@ -35,6 +37,12 @@ export const ROLES = {
     description: 'Consulta usuários e o registro de auditoria, sem alterar nada',
     permissions: ['admin.access', 'users.read', 'audit.read'] as Permission[],
     scoped: false,
+  },
+  broadcaster: {
+    name: 'Comunicador',
+    description: 'Envia comunicados em massa para a unidade e as unidades abaixo dela',
+    permissions: ['broadcast.send'] as Permission[],
+    scoped: true,
   },
   moderator: {
     name: 'Moderador',

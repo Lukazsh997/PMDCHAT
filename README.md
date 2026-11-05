@@ -15,9 +15,11 @@ pelo Google Chrome e depende só de software livre.
 | Anexos       | Até 50 MB, arrastar e soltar ou colar imagem, bloqueio de executáveis pelo nome e pelo conteúdo, antivírus ClamAV, imagens sem metadados (EXIF/GPS) e com miniatura          |
 | Grupos       | Dono e administradores, adicionar e remover pessoas (quem entra não vê o histórico anterior), sair do grupo, silenciar                                                       |
 | Notificações | Notificação do Chrome com a aba em segundo plano, contador no título e no ícone da aba                                                                                       |
-| Organograma  | Árvore de secretarias, subsecretarias e setores; mover uma unidade leva as subordinadas                                                                                      |
-| Permissões   | Papéis com escopo: super administrador, administrador de unidade (vale para a unidade e as de baixo), auditor e moderador                                                    |
-| Painel       | Usuários (criar, editar, bloquear, senha temporária, convidados com prazo), papéis, organograma, auditoria com filtros, indicadores                                          |
+| Organograma  | Aba para todos com a árvore (órgão › secretarias › subsecretarias › setores) e as pessoas de cada unidade, quantas estão online e busca por setor ou pessoa                  |
+| Comunicados  | Envio em massa para uma unidade e as subunidades, entregue em conversa particular a cada pessoa; papel Comunicador com escopo                                                |
+| Perfil       | Foto de perfil (recortada e sem metadados no servidor)                                                                                                                       |
+| Permissões   | Papéis com escopo: super administrador, administrador de unidade (vale para a unidade e as de baixo), comunicador, auditor e moderador                                       |
+| Painel       | Usuários (criar, editar, bloquear, excluir, senha temporária, convidados com prazo), papéis, organograma, auditoria com filtros, indicadores                                 |
 | Segurança    | Verificação em duas etapas (TOTP) obrigatória para quem acessa o painel; sessões no servidor; proteção CSRF; auditoria                                                       |
 
 **Fase 0 — Fundação:** monorepo, autenticação local, Docker Compose, Nginx, scripts de operação e CI.
@@ -106,3 +108,5 @@ login, anexos e o antivírus através do Nginx.
 8. [Papéis fixos com escopo na Fase 1](docs/adr/0008-papeis-com-escopo.md)
 9. [Verificação em duas etapas e APP_SECRET](docs/adr/0009-mfa-totp.md)
 10. [Anexos em disco com antivírus](docs/adr/0010-anexos-e-antivirus.md)
+11. [Comunicados em massa como mensagens diretas](docs/adr/0011-comunicados-em-massa.md)
+12. [Exclusão de usuários com anonimização](docs/adr/0012-exclusao-de-usuarios.md)

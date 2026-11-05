@@ -10,20 +10,44 @@ export function usePresence(userId: string | null | undefined): PresenceStatus |
   return presenceStore.use((s) => (userId ? s[userId] : undefined));
 }
 
-/** Pede ao servidor para acompanhar a presença destas pessoas. */
+/*
+ * Cada parte da tela (lista de conversas, organograma, painel do grupo) declara quem
+ * está mostrando; o servidor recebe a união. Sem isso, a última a pedir apagaria os
+ * pedidos das outras.
+ */
+const watchers = new Map<symbol, string[]>();
+let watchTimer: ReturnType<typeof setTimeout> | undefined;
+let lastSent = '';
+
+function flushWatch(force = false) {
+  clearTimeout(watchTimer);
+  watchTimer = setTimeout(() => {
+    const ids = [...new Set([...watchers.values()].flat())].sort();
+    const key = ids.join(',');
+    if (!force && key === lastSent) return;
+    lastSent = key;
+    getSocket().emit('presence.watch', { userIds: ids }, (statuses) =>
+      presenceStore.set((s) => ({ ...s, ...statuses })),
+    );
+  }, 50);
+}
+
+/** Pede ao servidor para acompanhar a presença destas pessoas enquanto o componente existir. */
 export function useWatchPresence(userIds: string[]): void {
   const key = [...new Set(userIds)].sort().join(',');
   useEffect(() => {
     if (!key) return;
-    const ids = key.split(',');
+    const token = Symbol('presence');
+    watchers.set(token, key.split(','));
+    flushWatch();
     const socket = getSocket();
-    const watch = () =>
-      socket.emit('presence.watch', { userIds: ids }, (statuses) =>
-        presenceStore.set((s) => ({ ...s, ...statuses })),
-      );
-    watch();
-    socket.on('connect', watch);
-    return () => void socket.off('connect', watch);
+    const resend = () => flushWatch(true);
+    socket.on('connect', resend);
+    return () => {
+      watchers.delete(token);
+      socket.off('connect', resend);
+      flushWatch();
+    };
   }, [key]);
 }
 

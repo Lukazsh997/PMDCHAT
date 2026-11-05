@@ -55,7 +55,7 @@ export function setUnreadBadge(count: number): void {
     count > 0
       ? 'data:image/svg+xml,' +
         encodeURIComponent(
-          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#0f3d3e"/><path d="M9 11.5a3.5 3.5 0 0 1 3.5-3.5h7a3.5 3.5 0 0 1 3.5 3.5v5a3.5 3.5 0 0 1-3.5 3.5H15l-4.2 3.4c-.5.4-1.3 0-1.3-.6V19.6A3.5 3.5 0 0 1 9 16.5z" fill="#f7f8f6"/><circle cx="24" cy="8" r="7" fill="#d93025"/></svg>',
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#1c5d99"/><path d="M9 11.5a3.5 3.5 0 0 1 3.5-3.5h7a3.5 3.5 0 0 1 3.5 3.5v5a3.5 3.5 0 0 1-3.5 3.5H15l-4.2 3.4c-.5.4-1.3 0-1.3-.6V19.6A3.5 3.5 0 0 1 9 16.5z" fill="#ffffff"/><circle cx="24" cy="8" r="7" fill="#d93025"/></svg>',
         )
       : originalFavicon;
 }

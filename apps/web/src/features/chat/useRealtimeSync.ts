@@ -64,7 +64,11 @@ export function useRealtimeSync(meId: string | undefined) {
       if (summary && isMuted(summary)) return;
       const who = senderName ?? 'Nova mensagem';
       showNotification({
-        title: summary?.type === 'group' ? `${who} em ${summary.title}` : who,
+        title: m.broadcast
+          ? `Comunicado para ${m.broadcast.unitName}${senderName ? ` (${senderName})` : ''}`
+          : summary?.type === 'group'
+            ? `${who} em ${summary.title}`
+            : who,
         body: m.body || (m.attachments.length ? `📎 ${m.attachments[0]!.name}` : ''),
         tag: m.conversationId,
         onClick: () => void navigate(`/c/${m.conversationId}`),

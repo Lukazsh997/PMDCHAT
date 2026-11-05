@@ -132,7 +132,7 @@ export class RealtimeService implements BeforeApplicationShutdown {
     socket.on('presence.watch', (p, ack) => {
       const ids = (Array.isArray(p?.userIds) ? p.userIds : [])
         .filter((x) => uuid.safeParse(x).success)
-        .slice(0, 500);
+        .slice(0, 2000);
       for (const room of socket.rooms) if (room.startsWith('presence:')) void socket.leave(room);
       void socket.join(ids.map((i) => `presence:${i}`));
       if (typeof ack === 'function') void this.presence.statuses(ids).then(ack).catch(this.ignore);

@@ -18,6 +18,9 @@ export type AuditAction =
   | 'user.created'
   | 'user.updated'
   | 'user.status_changed'
+  | 'user.deleted'
+  | 'user.avatar_changed'
+  | 'user.avatar_removed'
   | 'role.assigned'
   | 'role.removed'
   | 'org_unit.created'
@@ -29,7 +32,8 @@ export type AuditAction =
   | 'conversation.member_removed'
   | 'message.deleted'
   | 'message.deleted_by_moderator'
-  | 'file.rejected';
+  | 'file.rejected'
+  | 'broadcast.sent';
 
 export interface AuditEntry {
   action: AuditAction;

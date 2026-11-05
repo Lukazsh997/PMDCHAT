@@ -188,6 +188,7 @@ export function useSendMessage(conversationId: string, meId: string) {
         createdAt: new Date().toISOString(),
         editedAt: null,
         deletedAt: null,
+        broadcast: null,
         status: 'sending',
         pendingAttachmentIds: attachments.map((a) => a.id),
       };

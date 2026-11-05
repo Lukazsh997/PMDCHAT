@@ -5,7 +5,7 @@ import {
   ROLES,
   type RoleKey,
 } from '@plataforma/contracts';
-import { Copy, KeyRound, ShieldOff, Trash2 } from 'lucide-react';
+import { Copy, ImageOff, KeyRound, ShieldOff, Trash2, UserX } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Alert, Avatar, Button, Dialog, Select, Spinner, TextField, toast } from '@/components/ui';
 import { ApiRequestError } from '@/lib/api';
@@ -133,7 +133,7 @@ function toBody(f: Form) {
 
 function TemporaryPassword({ password, name }: { password: string; name: string }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-ipe bg-ipe-soft p-4">
+    <div className="rounded-[var(--radius-control)] border border-accent bg-accent-soft p-4">
       <p className="text-sm font-semibold">Senha temporária de {name}</p>
       <p className="mt-1 text-xs text-muted">
         Entregue à pessoa por um canal seguro. Ela será trocada no primeiro acesso e não aparece de
@@ -270,13 +270,21 @@ export function UserDetailDialog({
           )}
         </div>
       ) : (
-        <UserDetail key={u.id} u={u} units={units} />
+        <UserDetail key={u.id} u={u} units={units} onDeleted={onClose} />
       )}
     </Dialog>
   );
 }
 
-function UserDetail({ u, units }: { u: AdminUser; units: OrgUnit[] }) {
+function UserDetail({
+  u,
+  units,
+  onDeleted,
+}: {
+  u: AdminUser;
+  units: OrgUnit[];
+  onDeleted: () => void;
+}) {
   const me = useMe().data!;
   const m = useUserMutations();
   const [form, setForm] = useState<Form>(() => ({
@@ -293,13 +301,14 @@ function UserDetail({ u, units }: { u: AdminUser; units: OrgUnit[] }) {
   const [roleUnit, setRoleUnit] = useState('');
   const canManage = me.permissions.includes('users.manage');
   const canAssign = me.permissions.includes('roles.assign');
+  const canDelete = me.permissions.includes('users.delete') && u.id !== me.user.id;
   const fail = (e: Error) => toast(e.message, 'error');
   const errors = fieldErrors(m.update.error);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-        <Avatar name={u.displayName} size={40} />
+        <Avatar name={u.displayName} size={40} src={u.avatarUrl} />
         <span>
           Situação: <StatusLabel user={u} />
         </span>
@@ -410,6 +419,20 @@ function UserDetail({ u, units }: { u: AdminUser; units: OrgUnit[] }) {
               <ShieldOff size={15} aria-hidden="true" /> Redefinir duas etapas
             </Button>
           )}
+          {u.avatarUrl && (
+            <Button
+              variant="secondary"
+              loading={m.removeAvatar.isPending}
+              onClick={() =>
+                m.removeAvatar.mutate(u.id, {
+                  onSuccess: () => toast('Foto removida.'),
+                  onError: fail,
+                })
+              }
+            >
+              <ImageOff size={15} aria-hidden="true" /> Remover foto
+            </Button>
+          )}
           {u.status !== 'disabled' && (
             <Button
               variant="ghost"
@@ -498,6 +521,75 @@ function UserDetail({ u, units }: { u: AdminUser; units: OrgUnit[] }) {
           </>
         )}
       </section>
+
+      {canDelete && <DeleteUser u={u} onDeleted={onDeleted} />}
     </div>
+  );
+}
+
+/**
+ * Exclusão definitiva do diretório. Pede o login redigitado: é a única ação do painel
+ * que não tem volta.
+ */
+function DeleteUser({ u, onDeleted }: { u: AdminUser; onDeleted: () => void }) {
+  const m = useUserMutations();
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState('');
+  const matches = confirm.trim().toLowerCase() === u.username;
+
+  return (
+    <section className="rounded-[var(--radius-panel)] border border-danger/40 bg-danger-soft/50 p-4">
+      <h3 className="text-sm font-bold text-danger">Excluir usuário</h3>
+      <p className="mt-1 text-sm text-muted">
+        A pessoa sai do diretório e do organograma, perde o acesso e o login fica livre para outra
+        pessoa. E-mail, senha, foto e papéis são apagados. As mensagens que ela já enviou continuam
+        nas conversas, com o nome dela. Não é possível desfazer.
+      </p>
+      {!open ? (
+        <Button variant="danger" className="mt-3" onClick={() => setOpen(true)}>
+          <UserX size={15} aria-hidden="true" /> Excluir usuário
+        </Button>
+      ) : (
+        <form
+          className="mt-3 flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!matches) return;
+            m.remove.mutate(
+              { id: u.id, confirmUsername: confirm },
+              {
+                onSuccess: () => {
+                  toast(`${u.displayName} foi excluído(a).`);
+                  onDeleted();
+                },
+                onError: (err) => toast(err.message, 'error'),
+              },
+            );
+          }}
+        >
+          <TextField
+            label={`Para confirmar, digite o login: ${u.username}`}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="off"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Button type="submit" variant="danger" disabled={!matches} loading={m.remove.isPending}>
+              Excluir definitivamente
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setOpen(false);
+                setConfirm('');
+              }}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }

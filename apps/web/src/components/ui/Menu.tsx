@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface MenuItem {
   label: string;
@@ -8,7 +9,14 @@ export interface MenuItem {
   disabled?: boolean;
 }
 
-/** Menu suspenso simples, navegável por teclado. */
+const GAP = 4;
+const MARGIN = 8;
+
+/**
+ * Menu suspenso, navegável por teclado. É desenhado num portal com posição fixa:
+ * assim nunca é cortado por listas com rolagem ou por linhas com `content-visibility`,
+ * e abre para cima quando não cabe abaixo do botão.
+ */
 export function Menu({
   trigger,
   items,
@@ -16,7 +24,7 @@ export function Menu({
   label,
 }: {
   trigger: (props: {
-    onClick: () => void;
+    onClick: (e: React.MouseEvent<HTMLElement>) => void;
     'aria-expanded': boolean;
     'aria-haspopup': 'menu';
   }) => ReactNode;
@@ -25,62 +33,113 @@ export function Menu({
   label: string;
 }) {
   const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
+  const anchor = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [host, setHost] = useState<Element | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const a = anchor.current?.getBoundingClientRect();
+      const p = panel.current;
+      if (!a || !p) return;
+      const w = p.offsetWidth;
+      const h = p.offsetHeight;
+      let left = align === 'right' ? a.right - w : a.left;
+      left = Math.min(Math.max(MARGIN, left), window.innerWidth - w - MARGIN);
+      let top = a.bottom + GAP;
+      if (top + h > window.innerHeight - MARGIN) top = Math.max(MARGIN, a.top - GAP - h);
+      setPos({ top, left });
+    };
+    place();
+    window.addEventListener('resize', place);
+    // Rolar a lista por baixo fecha o menu, como nos menus nativos.
+    const onScroll = (e: Event) => !panel.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [open, align]);
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const inside = (t: EventTarget | null) =>
+      anchor.current?.contains(t as Node) || panel.current?.contains(t as Node);
+    const onDoc = (e: MouseEvent) => !inside(e.target) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      anchor.current?.querySelector<HTMLElement>('[aria-haspopup]')?.focus();
+    };
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
-    box.current?.querySelector<HTMLButtonElement>('[role=menuitem]:not(:disabled)')?.focus();
     return () => {
       document.removeEventListener('mousedown', onDoc);
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
 
+  useEffect(() => {
+    if (open && pos)
+      panel.current?.querySelector<HTMLButtonElement>('[role=menuitem]:not(:disabled)')?.focus();
+  }, [open, pos]);
+
   function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Tab') return setOpen(false);
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     e.preventDefault();
     const els = [
-      ...(box.current?.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not(:disabled)') ?? []),
+      ...(panel.current?.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not(:disabled)') ??
+        []),
     ];
     const i = els.indexOf(document.activeElement as HTMLButtonElement);
     els.at((i + (e.key === 'ArrowDown' ? 1 : -1)) % els.length)?.focus();
   }
 
   return (
-    <div ref={box} className="relative" onKeyDown={onKeyDown}>
+    <div ref={anchor} className="relative">
       {trigger({
-        onClick: () => setOpen((o) => !o),
+        onClick: (e) => {
+          setPos(null);
+          // Dentro de um <dialog> modal, o menu precisa estar no mesmo "top layer".
+          setHost(e.currentTarget.closest('dialog') ?? document.body);
+          setOpen((o) => !o);
+        },
         'aria-expanded': open,
         'aria-haspopup': 'menu',
       })}
-      {open && (
-        <div
-          role="menu"
-          aria-label={label}
-          className={`absolute top-full z-30 mt-1 min-w-48 rounded-[var(--radius-control)] border border-line bg-surface py-1 shadow-lg ${align === 'right' ? 'right-0' : 'left-0'}`}
-        >
-          {items.map((it) => (
-            <button
-              key={it.label}
-              type="button"
-              role="menuitem"
-              disabled={it.disabled}
-              onClick={() => {
-                setOpen(false);
-                it.onSelect();
-              }}
-              className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-line/50 focus-visible:bg-line/50 focus-visible:outline-none disabled:opacity-50 ${it.danger ? 'text-danger' : 'text-ink'}`}
-            >
-              {it.icon}
-              {it.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {open &&
+        host &&
+        createPortal(
+          <div
+            ref={panel}
+            role="menu"
+            aria-label={label}
+            onKeyDown={onKeyDown}
+            style={pos ?? { top: 0, left: 0, visibility: 'hidden' }}
+            className="fixed z-50 min-w-48 rounded-[var(--radius-control)] border border-line bg-surface py-1 shadow-lg"
+          >
+            {items.map((it) => (
+              <button
+                key={it.label}
+                type="button"
+                role="menuitem"
+                disabled={it.disabled}
+                onClick={() => {
+                  setOpen(false);
+                  it.onSelect();
+                }}
+                className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-line/50 focus-visible:bg-line/50 focus-visible:outline-none disabled:opacity-50 ${it.danger ? 'text-danger' : 'text-ink'}`}
+              >
+                {it.icon}
+                {it.label}
+              </button>
+            ))}
+          </div>,
+          host,
+        )}
     </div>
   );
 }

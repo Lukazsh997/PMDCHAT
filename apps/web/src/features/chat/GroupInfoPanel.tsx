@@ -44,7 +44,7 @@ export function ConversationInfo({
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="flex flex-col items-center px-4 py-6 text-center">
-          <Avatar name={detail.title} size={80} group={isGroup} />
+          <Avatar name={detail.title} size={80} group={isGroup} src={detail.peer?.avatarUrl} />
           <p className="mt-3 text-lg font-bold">{detail.title}</p>
           {detail.peer ? (
             <p className="text-sm text-muted">
@@ -88,7 +88,9 @@ export function ConversationInfo({
         {isGroup && (
           <section className="border-t border-line py-3">
             <div className="flex items-center px-4 pb-1">
-              <h3 className="flex-1 text-sm font-bold">{detail.members.length} participantes</h3>
+              <h3 className="flex-1 text-sm font-bold">
+                {detail.members.filter((m) => !m.removed).length} participantes
+              </h3>
               {amAdmin && (
                 <Button variant="ghost" onClick={() => setAdding(true)}>
                   <UserPlus size={15} aria-hidden="true" /> Adicionar
@@ -96,29 +98,31 @@ export function ConversationInfo({
               )}
             </div>
             <ul>
-              {detail.members.map((m) => (
-                <Member
-                  key={m.id}
-                  member={m}
-                  isMe={m.id === meId}
-                  canManage={
-                    amAdmin &&
-                    m.role !== 'owner' &&
-                    m.id !== meId &&
-                    (detail.myRole === 'owner' || m.role === 'member')
-                  }
-                  canPromote={amAdmin}
-                  onRemove={() =>
-                    actions.remove.mutate(m.id, { onError: (e) => toast(e.message, 'error') })
-                  }
-                  onRole={(role) =>
-                    actions.setRole.mutate(
-                      { userId: m.id, role },
-                      { onError: (e) => toast(e.message, 'error') },
-                    )
-                  }
-                />
-              ))}
+              {detail.members
+                .filter((m) => !m.removed)
+                .map((m) => (
+                  <Member
+                    key={m.id}
+                    member={m}
+                    isMe={m.id === meId}
+                    canManage={
+                      amAdmin &&
+                      m.role !== 'owner' &&
+                      m.id !== meId &&
+                      (detail.myRole === 'owner' || m.role === 'member')
+                    }
+                    canPromote={amAdmin}
+                    onRemove={() =>
+                      actions.remove.mutate(m.id, { onError: (e) => toast(e.message, 'error') })
+                    }
+                    onRole={(role) =>
+                      actions.setRole.mutate(
+                        { userId: m.id, role },
+                        { onError: (e) => toast(e.message, 'error') },
+                      )
+                    }
+                  />
+                ))}
             </ul>
           </section>
         )}
@@ -196,7 +200,12 @@ function Member({
   const presence = usePresence(member.id);
   return (
     <li className="flex items-center gap-3 px-4 py-2">
-      <Avatar name={member.displayName} size={36} presence={presence ?? 'offline'} />
+      <Avatar
+        name={member.displayName}
+        size={36}
+        src={member.avatarUrl}
+        presence={presence ?? 'offline'}
+      />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">
           {isMe ? 'Você' : member.displayName}

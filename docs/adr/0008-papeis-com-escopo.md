@@ -8,5 +8,9 @@ apenas as atribuições: usuário, papel e escopo (global ou uma unidade, inclui
 Somente o super administrador atribui papéis, o que impede escalonamento de privilégio. Fora do
 escopo, um usuário é respondido como inexistente, sem revelar quem existe em outras unidades.
 
+**Atualização (05/11/2026).** Entram o papel Comunicador (com escopo, só `broadcast.send`) e as
+permissões `broadcast.send` (também do administrador de unidade) e `users.delete` (só do super
+administrador). Ver ADRs 0011 e 0012.
+
 **Consequências.** Regras simples de auditar e cobertas por testes. A edição de papéis
 personalizados pelo painel entra na Fase 2 sem mudar as atribuições existentes.

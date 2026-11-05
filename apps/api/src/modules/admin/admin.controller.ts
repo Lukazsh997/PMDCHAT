@@ -19,6 +19,8 @@ import {
   type AuditPage,
   createUserSchema,
   type CreateUserResponse,
+  type DeleteUserRequest,
+  deleteUserSchema,
   setUserStatusSchema,
   type UpdateUserRequest,
   updateUserSchema,
@@ -130,6 +132,26 @@ export class AdminController {
   @RequirePermission('users.manage')
   async resetMfa(@Param('id', uuidParam) id: string, @Req() req: FastifyRequest): Promise<void> {
     await this.adminUsers.resetMfa(await this.actor(req), id);
+  }
+
+  @Delete('users/:id')
+  @HttpCode(204)
+  @RequirePermission('users.delete')
+  async deleteUser(
+    @Param('id', uuidParam) id: string,
+    @Body(new ZodPipe(deleteUserSchema)) body: DeleteUserRequest,
+    @Req() req: FastifyRequest,
+  ): Promise<void> {
+    await this.adminUsers.remove(await this.actor(req), id, body.confirmUsername);
+  }
+
+  @Delete('users/:id/avatar')
+  @RequirePermission('users.manage')
+  async removeAvatar(
+    @Param('id', uuidParam) id: string,
+    @Req() req: FastifyRequest,
+  ): Promise<AdminUser> {
+    return this.adminUsers.removeAvatar(await this.actor(req), id);
   }
 
   @Post('users/:id/roles')

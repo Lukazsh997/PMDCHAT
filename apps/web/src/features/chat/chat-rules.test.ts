@@ -10,6 +10,7 @@ const msg = (p: Partial<ChatMessage>): ChatMessage => ({
   senderId: 'u1',
   type: 'text',
   body: 'oi',
+  broadcast: null,
   system: null,
   attachments: [],
   clientId: null,

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   type Attachment,
+  type BroadcastRef,
   type Message,
   MESSAGE_RULES,
   type MessagePage,
@@ -10,6 +11,7 @@ import { AppException } from '../../common/app-exception.js';
 import { DomainEvents } from '../../common/events/domain-events.js';
 import { DB, type Database } from '../../database/database.js';
 import {
+  broadcasts,
   conversationMembers,
   conversations,
   files,
@@ -246,6 +248,19 @@ export class MessagesService {
   async withAttachments(rows: MessageRow[]): Promise<Message[]> {
     const ids = rows.filter((r) => !r.deletedAt).map((r) => r.id);
     const byMessage = new Map<string, Attachment[]>();
+    const broadcastIds = [...new Set(rows.flatMap((r) => (r.broadcastId ? [r.broadcastId] : [])))];
+    const refs = new Map<string, BroadcastRef>();
+    if (broadcastIds.length) {
+      const b = await this.db
+        .select({
+          id: broadcasts.id,
+          unitName: broadcasts.unitName,
+          includeSubunits: broadcasts.includeSubunits,
+        })
+        .from(broadcasts)
+        .where(inArray(broadcasts.id, broadcastIds));
+      for (const r of b) refs.set(r.id, r);
+    }
     if (ids.length) {
       const att = await this.db
         .select({ messageId: messageAttachments.messageId, file: files })
@@ -256,7 +271,9 @@ export class MessagesService {
       for (const a of att)
         byMessage.set(a.messageId, [...(byMessage.get(a.messageId) ?? []), toUploaded(a.file)]);
     }
-    return rows.map((r) => toMessage(r, byMessage.get(r.id)));
+    return rows.map((r) =>
+      toMessage(r, byMessage.get(r.id), r.broadcastId ? (refs.get(r.broadcastId) ?? null) : null),
+    );
   }
 }
 

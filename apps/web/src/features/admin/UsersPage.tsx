@@ -110,7 +110,7 @@ export function UsersPage() {
                     className="flex items-center gap-3 text-left"
                     onClick={() => setOpenId(u.id)}
                   >
-                    <Avatar name={u.displayName} size={32} />
+                    <Avatar name={u.displayName} size={32} src={u.avatarUrl} />
                     <span>
                       <span className="block font-semibold">{u.displayName}</span>
                       <span className="block text-xs text-muted">

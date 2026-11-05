@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   bigint,
+  boolean,
   index,
   integer,
   jsonb,
@@ -16,6 +18,7 @@ import {
 import type { SystemEvent } from '@plataforma/contracts';
 import { createdAt, id, updatedAt } from './_common.js';
 import { files } from './files.js';
+import { orgUnits } from './org.js';
 import { users } from './users.js';
 
 export const conversationType = pgEnum('conversation_type', ['direct', 'group']);
@@ -87,6 +90,8 @@ export const messages = pgTable(
     deletedBy: uuid().references(() => users.id, { onDelete: 'set null' }),
     /** Conteúdo removido definitivamente (48 h após a exclusão). */
     purgedAt: timestamp({ withTimezone: true }),
+    /** Mensagem entregue por um comunicado em massa. */
+    broadcastId: uuid().references((): AnyPgColumn => broadcasts.id, { onDelete: 'set null' }),
   },
   (t) => [
     uniqueIndex('messages_conversation_seq_uq').on(t.conversationId, t.seq),
@@ -96,6 +101,27 @@ export const messages = pgTable(
     index('messages_pending_purge_idx')
       .on(t.deletedAt)
       .where(sql`${t.deletedAt} is not null and ${t.purgedAt} is null`),
+  ],
+);
+
+/** Comunicados em massa: um registro por envio; cada destinatário recebe uma mensagem direta. */
+export const broadcasts = pgTable(
+  'broadcasts',
+  {
+    id: id(),
+    senderId: uuid().references(() => users.id, { onDelete: 'set null' }),
+    orgUnitId: uuid().references(() => orgUnits.id, { onDelete: 'set null' }),
+    /** Nome da unidade no momento do envio (a unidade pode ser renomeada depois). */
+    unitName: varchar({ length: 200 }).notNull(),
+    includeSubunits: boolean().notNull(),
+    body: text().notNull().default(''),
+    recipientCount: integer().notNull(),
+    clientId: varchar({ length: 64 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('broadcasts_client_id_uq').on(t.senderId, t.clientId),
+    index('broadcasts_unit_idx').on(t.orgUnitId),
   ],
 );
 
@@ -134,3 +160,4 @@ export const messageAttachments = pgTable(
 export type ConversationRow = typeof conversations.$inferSelect;
 export type ConversationMemberRow = typeof conversationMembers.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
+export type BroadcastRow = typeof broadcasts.$inferSelect;

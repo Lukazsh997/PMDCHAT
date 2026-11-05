@@ -1,4 +1,4 @@
-import { LogOut, MessagesSquare, Shield, UserRound, WifiOff } from 'lucide-react';
+import { LogOut, MessagesSquare, Network, Shield, UserRound, WifiOff } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { Avatar } from '@/components/ui';
@@ -9,7 +9,7 @@ import { useConversations } from '../chat/chat-api';
 import { useRealtimeSync } from '../chat/useRealtimeSync';
 
 /**
- * Estrutura principal: barra de navegação estreita (petróleo) à esquerda e a área
+ * Estrutura principal: barra de navegação estreita (grafite) à esquerda e a área
  * de trabalho à direita.
  */
 export function AppShell() {
@@ -26,7 +26,7 @@ export function AppShell() {
       {connection === 'offline' && (
         <div
           role="status"
-          className="flex items-center justify-center gap-2 bg-ipe px-4 py-1.5 text-sm font-semibold text-rail-strong"
+          className="flex items-center justify-center gap-2 bg-accent px-4 py-1.5 text-sm font-semibold text-rail-strong"
         >
           <WifiOff size={15} aria-hidden="true" /> Sem conexão com o servidor. Tentando reconectar…
         </div>
@@ -40,6 +40,11 @@ export function AppShell() {
           <RailLink to="/" label="Conversas" badge={unread}>
             <MessagesSquare size={20} aria-hidden="true" />
           </RailLink>
+          {user?.kind !== 'guest' && (
+            <RailLink to="/organograma" label="Organograma">
+              <Network size={20} aria-hidden="true" />
+            </RailLink>
+          )}
           {isAdmin && (
             <RailLink to="/admin" label="Administração">
               <Shield size={20} aria-hidden="true" />
@@ -47,14 +52,18 @@ export function AppShell() {
           )}
           <div className="flex-1" />
           <RailLink to="/conta" label="Minha conta">
-            {user ? <Avatar name={user.displayName} size={28} /> : <UserRound size={20} />}
+            {user ? (
+              <Avatar name={user.displayName} size={28} src={user.avatarUrl} />
+            ) : (
+              <UserRound size={20} />
+            )}
           </RailLink>
           <button
             type="button"
             onClick={() => logout.mutate()}
             title="Sair"
             aria-label="Sair"
-            className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] text-rail-ink/70 hover:bg-rail-strong hover:text-rail-ink focus-visible:outline-ipe"
+            className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] text-rail-ink/70 hover:bg-rail-ink/8 hover:text-rail-ink focus-visible:outline-accent"
           >
             <LogOut size={18} aria-hidden="true" />
           </button>
@@ -86,10 +95,10 @@ function RailLink({
       aria-label={badge ? `${label}, ${badge} não lidas` : label}
       className={({ isActive }) => {
         const active = isActive || (to === '/' && location.pathname.startsWith('/c/'));
-        return `relative flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] focus-visible:outline-ipe ${
+        return `relative flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] focus-visible:outline-accent ${
           active
-            ? 'bg-rail-strong text-rail-ink before:absolute before:top-2 before:-left-2 before:h-6 before:w-1 before:rounded-r before:bg-ipe md:before:-left-3'
-            : 'text-rail-ink/70 hover:bg-rail-strong hover:text-rail-ink'
+            ? 'bg-rail-ink/12 text-rail-ink before:absolute before:top-2 before:-left-2 before:h-6 before:w-1 before:rounded-r before:bg-accent md:before:-left-3'
+            : 'text-rail-ink/70 hover:bg-rail-ink/8 hover:text-rail-ink'
         }`;
       }}
     >
@@ -97,7 +106,7 @@ function RailLink({
       {!!badge && (
         <span
           aria-hidden="true"
-          className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-ipe px-1 text-center text-[10px] leading-4 font-bold text-rail-strong"
+          className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] leading-4 font-bold text-rail-strong"
         >
           {badge > 99 ? '99+' : badge}
         </span>

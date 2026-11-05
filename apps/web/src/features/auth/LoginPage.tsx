@@ -47,7 +47,7 @@ export function LoginPage() {
             Conversas, grupos e avisos da organização, num só lugar e dentro da nossa rede.
           </p>
         </div>
-        <div aria-hidden="true" className="absolute right-0 bottom-0 h-1.5 w-1/3 bg-ipe" />
+        <div aria-hidden="true" className="absolute right-0 bottom-0 h-1.5 w-1/3 bg-accent" />
       </section>
 
       <section className="flex items-center justify-center px-6 py-12">
@@ -177,7 +177,7 @@ function LogoMark() {
         d="M9 11.5a3.5 3.5 0 0 1 3.5-3.5h7a3.5 3.5 0 0 1 3.5 3.5v5a3.5 3.5 0 0 1-3.5 3.5H15l-4.2 3.4c-.5.4-1.3 0-1.3-.6V19.6A3.5 3.5 0 0 1 9 16.5z"
         className="fill-rail-ink"
       />
-      <circle cx="22.5" cy="9.5" r="3.5" className="fill-ipe" />
+      <circle cx="22.5" cy="9.5" r="3.5" className="fill-accent" />
     </svg>
   );
 }

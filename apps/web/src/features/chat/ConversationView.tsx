@@ -63,11 +63,13 @@ export function ConversationView({ conversationId }: { conversationId: string })
   );
   const subtitle = typingNames.length
     ? `${typingNames.join(', ')} ${typingNames.length > 1 ? 'estão' : 'está'} digitando…`
-    : peer
-      ? PRESENCE_TEXT[presence ?? 'offline']
-      : d
-        ? d.members.map((m) => (m.id === meId ? 'Você' : m.displayName.split(' ')[0])).join(', ')
-        : '';
+    : peer?.removed
+      ? 'Conta excluída'
+      : peer
+        ? PRESENCE_TEXT[presence ?? 'offline']
+        : d
+          ? d.members.map((m) => (m.id === meId ? 'Você' : m.displayName.split(' ')[0])).join(', ')
+          : '';
 
   if (detail.isError) {
     return (
@@ -119,6 +121,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
             <Avatar
               name={title || '?'}
               size={38}
+              src={peer?.avatarUrl}
               group={d?.type === 'group'}
               presence={peer ? (presence ?? 'offline') : undefined}
             />
@@ -166,26 +169,32 @@ export function ConversationView({ conversationId }: { conversationId: string })
           />
         )}
 
-        <Composer
-          ref={composer}
-          conversationId={conversationId}
-          editing={editing}
-          onCancelEdit={() => setEditing(null)}
-          onEditLast={() => {
-            const last = items.findLast(
-              (m) => m.senderId === meId && m.type === 'text' && !m.deletedAt && !m.status,
-            );
-            if (last && Date.now() - new Date(last.createdAt).getTime() < 15 * 60_000)
-              setEditing(last);
-          }}
-          onSubmitEdit={async (body) => {
-            await edit
-              .mutateAsync({ id: editing!.id, body })
-              .catch((e: Error) => toast(e.message, 'error'));
-            setEditing(null);
-          }}
-          onSend={(body, attachments) => void send(body, attachments)}
-        />
+        {peer?.removed ? (
+          <p className="border-t border-line bg-surface px-4 py-3 text-center text-sm text-muted">
+            Esta pessoa foi excluída do sistema. O histórico continua disponível para consulta.
+          </p>
+        ) : (
+          <Composer
+            ref={composer}
+            conversationId={conversationId}
+            editing={editing}
+            onCancelEdit={() => setEditing(null)}
+            onEditLast={() => {
+              const last = items.findLast(
+                (m) => m.senderId === meId && m.type === 'text' && !m.deletedAt && !m.status,
+              );
+              if (last && Date.now() - new Date(last.createdAt).getTime() < 15 * 60_000)
+                setEditing(last);
+            }}
+            onSubmitEdit={async (body) => {
+              await edit
+                .mutateAsync({ id: editing!.id, body })
+                .catch((e: Error) => toast(e.message, 'error'));
+              setEditing(null);
+            }}
+            onSend={(body, attachments) => void send(body, attachments)}
+          />
+        )}
 
         {dragging && (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center border-2 border-dashed border-primary bg-surface/85">

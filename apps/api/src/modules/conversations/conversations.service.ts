@@ -90,7 +90,13 @@ export class ConversationsService {
           order by x.seq desc limit 1
         ) lm on true
        where m.user_id = ${userId}
-         and (c.type = 'group' or c.last_seq > 0 or c.created_by = ${userId})
+         and (c.type = 'group'
+              or (c.last_seq = 0 and c.created_by = ${userId})
+              -- Conversa direta que só tem comunicados enviados por mim fica fora da
+              -- minha lista: quem dispara para 500 pessoas não ganha 500 conversas.
+              or exists (select 1 from messages x
+                          where x.conversation_id = c.id and x.seq > m.joined_seq
+                            and (x.broadcast_id is null or x.sender_id is distinct from ${userId})))
          ${filter}
        order by c.last_message_at desc
     `)) as unknown as SummaryRow[];

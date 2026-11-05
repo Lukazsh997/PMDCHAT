@@ -1,5 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { DirectoryUser, OrgUnitRef, PublicUser } from '@plataforma/contracts';
+import {
+  API_PREFIX,
+  type DirectoryUser,
+  type OrgUnitRef,
+  type PublicUser,
+} from '@plataforma/contracts';
 import { and, count, eq, inArray, isNull } from 'drizzle-orm';
 import { DB, type Database } from '../../database/database.js';
 import {
@@ -33,6 +38,16 @@ export interface LoadedUser {
 
 export function unitRef(u: Pick<OrgUnitRow, 'id' | 'name' | 'acronym'> | null): OrgUnitRef | null {
   return u ? { id: u.id, name: u.name, acronym: u.acronym } : null;
+}
+
+/** Endereço da foto: o nome do arquivo entra na URL, então trocar a foto invalida o cache. */
+export function avatarUrl(u: Pick<UserRow, 'id' | 'avatarKey'>): string | null {
+  if (!u.avatarKey) return null;
+  const version = u.avatarKey
+    .split('/')
+    .pop()!
+    .replace(/\.webp$/, '');
+  return `${API_PREFIX}/users/${u.id}/avatar?v=${version}`;
 }
 
 /** Usuário pode usar o sistema agora? (ativo e, se convidado, dentro do prazo). */
@@ -178,6 +193,7 @@ export class UsersService {
       orgUnit: unitRef(unit),
       mustChangePassword: u.mustChangePassword,
       mfaEnabled,
+      avatarUrl: avatarUrl(u),
     };
   }
 }
@@ -190,5 +206,7 @@ export function toDirectory(u: UserRow, unit: OrgUnitRow | null): DirectoryUser 
     jobTitle: u.jobTitle,
     kind: u.kind,
     orgUnit: unitRef(unit),
+    avatarUrl: avatarUrl(u),
+    ...(u.deletedAt ? { removed: true as const } : {}),
   };
 }

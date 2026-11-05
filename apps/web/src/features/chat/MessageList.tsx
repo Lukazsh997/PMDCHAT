@@ -5,6 +5,7 @@ import {
   Check,
   CheckCheck,
   Clock,
+  Megaphone,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -123,7 +124,7 @@ export function MessageList({
             Nenhuma mensagem ainda. Escreva a primeira abaixo.
           </p>
         )}
-        <ol ref={content} className="mx-auto flex max-w-3xl flex-col">
+        <ol ref={content} className="flex flex-col">
           {items.map((m, i) => {
             const prev = items[i - 1];
             const newDay = !prev || !sameDay(prev.createdAt, m.createdAt);
@@ -234,7 +235,7 @@ function Bubble({
       className={`msg-row group flex ${mine ? 'justify-end' : 'justify-start'} ${continued ? 'mt-0.5' : 'mt-2.5'}`}
     >
       <div
-        className={`flex max-w-[min(85%,36rem)] items-start gap-1 ${mine ? 'flex-row-reverse' : ''}`}
+        className={`flex max-w-[min(80%,42rem)] items-start gap-1 ${mine ? 'flex-row-reverse' : ''}`}
       >
         <div
           className={`min-w-0 rounded-[14px] px-3 py-1.5 shadow-[0_1px_0_rgb(0_0_0/0.06)] ${mine ? 'bg-bubble-own' : 'bg-bubble-other'} ${
@@ -247,6 +248,13 @@ function Bubble({
               style={{ '--hue': hue } as React.CSSProperties}
             >
               {name}
+            </p>
+          )}
+          {m.broadcast && !deleted && (
+            <p className="mb-1 flex items-center gap-1.5 border-b border-ink/10 pb-1 text-[11px] font-semibold tracking-wide text-primary uppercase">
+              <Megaphone size={12} aria-hidden="true" />
+              Comunicado para {m.broadcast.unitName}
+              {m.broadcast.includeSubunits ? ' e subunidades' : ''}
             </p>
           )}
           {deleted ? (

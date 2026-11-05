@@ -24,6 +24,26 @@ export interface OrgUnit {
   memberCount: number;
 }
 
+/** Unidade no organograma visto por todos (só unidades ativas). */
+export interface OrgTreeUnit {
+  id: string;
+  parentId: string | null;
+  kind: OrgUnitKind;
+  name: string;
+  acronym: string | null;
+  depth: number;
+  /** Pessoas lotadas diretamente nesta unidade (sem contar as subunidades). */
+  memberCount: number;
+  /** Dessas, quantas estão conectadas agora. */
+  onlineCount: number;
+}
+
+export interface OrgTree {
+  units: OrgTreeUnit[];
+  /** Pessoas ativas sem lotação. */
+  unassigned: { memberCount: number; onlineCount: number };
+}
+
 export const createOrgUnitSchema = z.object({
   parentId: z.uuid().nullable(),
   kind: orgUnitKindSchema,

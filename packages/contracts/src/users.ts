@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { usernameSchema } from './auth.js';
-import type { Permission, RoleKey } from './rbac.js';
+import { type Permission, ROLE_KEYS, type RoleKey } from './rbac.js';
 
 export const userStatusSchema = z.enum(['active', 'blocked', 'disabled']);
 export type UserStatus = z.infer<typeof userStatusSchema>;
@@ -31,6 +31,8 @@ export interface PublicUser {
   orgUnit: OrgUnitRef | null;
   mustChangePassword: boolean;
   mfaEnabled: boolean;
+  /** Endereço da foto de perfil (muda quando a foto é trocada), ou null. */
+  avatarUrl: string | null;
 }
 
 export interface MeResponse {
@@ -50,6 +52,9 @@ export interface DirectoryUser {
   jobTitle: string | null;
   kind: UserKind;
   orgUnit: OrgUnitRef | null;
+  avatarUrl: string | null;
+  /** Conta excluída: aparece só no histórico das conversas. */
+  removed?: true;
 }
 
 /* ---------------------------- Administração ---------------------------- */
@@ -110,10 +115,14 @@ export interface CreateUserResponse {
 }
 
 export const assignRoleSchema = z.object({
-  role: z.enum(['super_admin', 'unit_admin', 'auditor', 'moderator']),
+  role: z.enum(ROLE_KEYS as [RoleKey, ...RoleKey[]]),
   orgUnitId: z.uuid().nullable().optional(),
 });
 export type AssignRoleRequest = z.infer<typeof assignRoleSchema>;
+
+/** Exclusão de usuário: o super administrador redigita o login para confirmar. */
+export const deleteUserSchema = z.object({ confirmUsername: z.string().trim().min(1) });
+export type DeleteUserRequest = z.infer<typeof deleteUserSchema>;
 
 /* ------------------------------ Auditoria ------------------------------ */
 

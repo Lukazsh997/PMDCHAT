@@ -11,6 +11,7 @@ import {
   users,
 } from '../../database/schema/index.js';
 import { REDIS } from '../../redis/redis.module.js';
+import { connectedUserIds } from '../realtime/index.js';
 
 @Injectable()
 export class AuditQueryService {
@@ -83,7 +84,7 @@ export class AuditQueryService {
         .select({ n: count() })
         .from(messages)
         .where(gte(messages.createdAt, new Date(Date.now() - 86_400_000))),
-      this.redis.scard('presence:online'),
+      connectedUserIds(this.redis).then((ids) => ids.length),
     ]);
     return {
       activeUsers: a?.n ?? 0,
