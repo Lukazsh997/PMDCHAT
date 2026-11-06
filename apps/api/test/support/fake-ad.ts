@@ -36,6 +36,9 @@ export class FakeAd {
   people = new Map<string, FakePerson>();
   ous: string[] = [];
   groups: { cn: string; description?: string }[] = [];
+  /** Computadores e impressoras, como o AD guarda: não podem virar pessoas. */
+  computers: { name: string; ou: string }[] = [];
+  printers: { name: string; ou: string }[] = [];
   /** Liga/desliga a resposta do servidor (simula o AD fora do ar). */
   down = false;
   url = '';
@@ -86,6 +89,8 @@ export class FakeAd {
     this.people.clear();
     this.ous = [];
     this.groups = [];
+    this.computers = [];
+    this.printers = [];
     this.down = false;
   }
 
@@ -123,6 +128,31 @@ export class FakeAd {
           objectClass: ['top', 'group'],
           cn: g.cn,
           ...(g.description ? { description: g.description } : {}),
+        },
+      });
+    }
+    for (const c of this.computers) {
+      // No AD, computador também é objectClass=user; o que muda é o objectCategory.
+      out.push({
+        dn: `CN=${c.name},${c.ou},${BASE}`,
+        attrs: {
+          objectClass: ['top', 'person', 'organizationalPerson', 'user', 'computer'],
+          objectCategory: 'computer',
+          objectGUID: guidFor(`pc:${c.name}`),
+          sAMAccountName: c.name.toLowerCase(),
+          cn: c.name,
+          userAccountControl: '4096',
+        },
+      });
+    }
+    for (const p of this.printers) {
+      out.push({
+        dn: `CN=${p.name},${p.ou},${BASE}`,
+        attrs: {
+          objectClass: ['top', 'leaf', 'connectionPoint', 'printQueue'],
+          objectCategory: 'printQueue',
+          cn: p.name,
+          printerName: p.name,
         },
       });
     }

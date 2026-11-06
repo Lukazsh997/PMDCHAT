@@ -144,6 +144,85 @@ describe('Active Directory: configuração', () => {
   });
 });
 
+describe('Active Directory: OUs com computadores e impressoras', () => {
+  // Estrutura do órgão: cada setor tem COMPUTADORES, IMPRESSORAS e USUÁRIOS.
+  function prefeitura() {
+    const setores = ['ADMINISTRAÇÃO PREDIAL', 'TI', 'OUTROS SETORES'];
+    ad.ous = ['OU=PREFEITURA'];
+    for (const s of setores) {
+      const ou = `OU=${s},OU=PREFEITURA`;
+      ad.ous.push(ou, `OU=COMPUTADORES,${ou}`, `OU=IMPRESSORAS,${ou}`, `OU=USUÁRIOS,${ou}`);
+      ad.computers.push({ name: `PC${s.slice(0, 2)}01`, ou: `OU=COMPUTADORES,${ou}` });
+      ad.printers.push({ name: `IMP-${s.slice(0, 2)}`, ou: `OU=IMPRESSORAS,${ou}` });
+    }
+    ad.add(
+      { username: 'joao', displayName: 'João', ou: 'OU=USUÁRIOS,OU=TI,OU=PREFEITURA' },
+      { username: 'ana', displayName: 'Ana', ou: 'OU=USUÁRIOS,OU=TI,OU=PREFEITURA' },
+      {
+        username: 'bia',
+        displayName: 'Bia',
+        ou: 'OU=USUÁRIOS,OU=ADMINISTRAÇÃO PREDIAL,OU=PREFEITURA',
+      },
+    );
+  }
+
+  it('conta só pessoas: computadores e impressoras não aparecem nem viram contas', async () => {
+    const { cookie } = await admin();
+    await configure(cookie);
+    prefeitura();
+    const test = await call(ctx, 'POST', '/admin/ldap/test', { cookie, body: settingsBody() });
+    expect(test.body).toMatchObject({ ok: true, userCount: 3 });
+
+    const ous = (await call(ctx, 'GET', '/admin/ldap/ous', { cookie })).body as {
+      name: string;
+      dn: string;
+      people: number;
+      accountFolder: boolean;
+    }[];
+    const ti = (n: string) => ous.find((o) => o.dn.toLowerCase().startsWith(n.toLowerCase()))!;
+    expect(ti('OU=TI,').people).toBe(2);
+    expect(ti('OU=PREFEITURA,').people).toBe(3);
+    expect(ti('OU=COMPUTADORES,OU=TI').people).toBe(0);
+    expect(ti('OU=IMPRESSORAS,OU=TI').people).toBe(0);
+    expect(ous.filter((o) => o.accountFolder)).toHaveLength(2);
+    expect(
+      ous
+        .filter((o) => o.people > 0 && !o.accountFolder)
+        .map((o) => o.name)
+        .sort(),
+    ).toEqual(['ADMINISTRAÇÃO PREDIAL', 'PREFEITURA', 'TI']);
+  });
+
+  it('quem está em USUÁRIOS fica na unidade do setor de cima', async () => {
+    const { cookie } = await admin();
+    await configure(cookie);
+    prefeitura();
+    const pmd = await createUnit(ctx, 'Prefeitura', undefined);
+    const ti = await createUnit(ctx, 'TI', pmd);
+    const predial = await createUnit(ctx, 'Administração Predial', pmd);
+    await call(ctx, 'PUT', '/admin/ldap/ous', {
+      cookie,
+      body: {
+        mappings: [
+          { dn: `OU=PREFEITURA,${BASE}`, orgUnitId: pmd.id },
+          { dn: `OU=TI,OU=PREFEITURA,${BASE}`, orgUnitId: ti.id },
+          { dn: `OU=ADMINISTRAÇÃO PREDIAL,OU=PREFEITURA,${BASE}`, orgUnitId: predial.id },
+        ],
+      },
+    });
+    const run = await call(ctx, 'POST', '/admin/ldap/sync', {
+      cookie,
+      body: { confirmLargeChanges: false },
+    });
+    expect(run.body!.summary).toMatchObject({ created: 3 });
+    expect((await userByName('joao'))!.orgUnitId).toBe(ti.id);
+    expect((await userByName('bia'))!.orgUnitId).toBe(predial.id);
+    // Nenhum computador virou conta.
+    const all = await ctx.db.select({ username: users.username }).from(users);
+    expect(all.map((u) => u.username).sort()).toEqual(['ana', 'bia', 'chefe', 'joao']);
+  });
+});
+
 describe('Active Directory: login', () => {
   it('entra com a senha do AD (cria a conta no 1º login) e aceita DOMINIO\\login', async () => {
     const { cookie } = await admin();

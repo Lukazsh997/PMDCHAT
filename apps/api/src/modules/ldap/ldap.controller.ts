@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Inject, Post, Put, Req } from '@nestjs/common';
 import {
   groupMappingsSchema,
+  LDAP_ACCOUNT_FOLDER_NAMES,
   type LdapGroup,
   type LdapOu,
   type LdapPreview,
@@ -21,7 +22,7 @@ import { DB, type Database } from '../../database/database.js';
 import { ldapGroupMappings, ldapOuMappings, orgUnits, roles } from '../../database/schema/index.js';
 import { AuditService } from '../audit/index.js';
 import { RequirePermission } from '../rbac/index.js';
-import { DirectoryUnavailableError } from './ldap.gateway.js';
+import { DirectoryUnavailableError, normalizeDn, parentDn } from './ldap.gateway.js';
 import { LdapSettingsService } from './ldap-settings.service.js';
 import { LdapSyncService } from './ldap-sync.service.js';
 
@@ -107,28 +108,42 @@ export class LdapController {
   @Get('ous')
   async ous(): Promise<LdapOu[]> {
     const { row, gateway } = await this.settings.requireGateway();
-    const [ous, maps, units] = await Promise.all([
+    const [ous, directory, maps, units] = await Promise.all([
       this.directory(() => gateway.listOus()),
+      // Só pessoas (o filtro de pessoas já deixa de fora computadores e impressoras).
+      this.directory(() => gateway.listPeople()),
       this.db.select().from(ldapOuMappings),
       this.db
         .select({ id: orgUnits.id, name: orgUnits.name, acronym: orgUnits.acronym })
         .from(orgUnits),
     ]);
-    const mapped = new Map(maps.map((m) => [m.dn, m.orgUnitId]));
+    const mapped = new Map(maps.map((m) => [normalizeDn(m.dn), m.orgUnitId]));
     const byName = new Map<string, string>();
     for (const u of units) {
       byName.set(normalize(u.name), u.id);
       if (u.acronym) byName.set(normalize(u.acronym), u.id);
     }
+    // Quantas pessoas há em cada OU, contando as OUs de dentro.
+    const count = new Map<string, number>();
+    for (const p of directory.people) {
+      for (let d = parentDn(p.dn); d; d = parentDn(d)) count.set(d, (count.get(d) ?? 0) + 1);
+    }
+    const folders = new Set(LDAP_ACCOUNT_FOLDER_NAMES);
     const baseDepth = row.baseDn.split(/(?<!\\),/).length;
     return ous
-      .map((o) => ({
-        dn: o.dn,
-        name: o.name,
-        depth: Math.max(0, o.dn.split(/(?<!\\),/).length - baseDepth - 1),
-        orgUnitId: mapped.get(o.dn.toLowerCase()) ?? null,
-        suggestedOrgUnitId: byName.get(normalize(o.name)) ?? null,
-      }))
+      .map((o) => {
+        const people = count.get(normalizeDn(o.dn)) ?? 0;
+        const accountFolder = people > 0 && folders.has(normalize(o.name));
+        return {
+          dn: o.dn,
+          name: o.name,
+          depth: Math.max(0, o.dn.split(/(?<!\\),/).length - baseDepth - 1),
+          orgUnitId: mapped.get(normalizeDn(o.dn)) ?? null,
+          suggestedOrgUnitId: accountFolder ? null : (byName.get(normalize(o.name)) ?? null),
+          people,
+          accountFolder,
+        };
+      })
       .sort((a, b) => reversedDn(a.dn).localeCompare(reversedDn(b.dn)));
   }
 
@@ -142,7 +157,7 @@ export class LdapController {
       if (body.mappings.length) {
         await tx
           .insert(ldapOuMappings)
-          .values(body.mappings.map((m) => ({ dn: m.dn.toLowerCase(), orgUnitId: m.orgUnitId })))
+          .values(body.mappings.map((m) => ({ dn: normalizeDn(m.dn), orgUnitId: m.orgUnitId })))
           .onConflictDoNothing();
       }
     });
@@ -169,7 +184,7 @@ export class LdapController {
         name: g.name,
         description: g.description,
         mappings: maps
-          .filter((m) => m.dn.toLowerCase() === g.dn.toLowerCase())
+          .filter((m) => normalizeDn(m.dn) === normalizeDn(g.dn))
           .map((m) => ({ role: m.role, orgUnitId: m.orgUnitId })),
       }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
@@ -205,7 +220,7 @@ export class LdapController {
       if (body.mappings.length) {
         await tx
           .insert(ldapGroupMappings)
-          .values(body.mappings.map((m) => ({ ...m, dn: m.dn.toLowerCase() })))
+          .values(body.mappings.map((m) => ({ ...m, dn: normalizeDn(m.dn) })))
           .onConflictDoNothing();
       }
     });

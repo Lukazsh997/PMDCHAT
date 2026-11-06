@@ -2,6 +2,7 @@ import {
   LDAP_DEFAULTS,
   type LdapChange,
   type LdapGroup,
+  type LdapOu,
   type LdapPreview,
   type LdapSettings,
   type LdapSyncRun,
@@ -407,9 +408,24 @@ function OuSection({ enabled }: { enabled: boolean }) {
   // Só as alterações feitas na tela; o resto vem do servidor.
   const [edits, setEdits] = useState<Record<string, string>>({});
   const valueOf = (dn: string, saved: string | null) => edits[dn] ?? saved ?? '';
+  const [showAll, setShowAll] = useState(false);
+
+  // Setores de verdade: OUs com pessoas que não são só a pasta de contas (USUÁRIOS).
+  // COMPUTADORES, IMPRESSORAS e outras OUs sem pessoas ficam escondidas, a menos que
+  // já estejam ligadas a uma unidade.
+  const isSector = (o: LdapOu) =>
+    (o.people > 0 && !o.accountFolder) || !!valueOf(o.dn, o.orgUnitId);
+  const visible = (ous.data ?? []).filter((o) => showAll || isSector(o));
+  const hidden = (ous.data?.length ?? 0) - visible.length;
+  const folderOf = new Map(
+    (ous.data ?? [])
+      .filter((o) => o.accountFolder)
+      .map((o) => [o.dn.slice(o.dn.search(/(?<!\\),/) + 1).toLowerCase(), o.name]),
+  );
 
   const suggestions =
-    ous.data?.filter((o) => !valueOf(o.dn, o.orgUnitId) && o.suggestedOrgUnitId) ?? [];
+    ous.data?.filter((o) => isSector(o) && !valueOf(o.dn, o.orgUnitId) && o.suggestedOrgUnitId) ??
+    [];
   const dirty = !!ous.data?.some((o) => valueOf(o.dn, o.orgUnitId) !== (o.orgUnitId ?? ''));
 
   const save = () =>
@@ -429,7 +445,7 @@ function OuSection({ enabled }: { enabled: boolean }) {
     <Section
       step={2}
       title="OUs → unidades do organograma"
-      description="A lotação de cada pessoa vem da OU onde ela está no AD. Vale a OU mais próxima que tiver unidade: quem está numa sub-OU sem unidade herda a da OU de cima."
+      description="Ligue cada setor do AD a uma unidade. Quem está numa pasta de contas (como USUÁRIOS) ou numa sub-OU sem unidade fica na unidade da OU de cima. Só pessoas são importadas: computadores e impressoras ficam de fora."
       actions={
         enabled &&
         ous.data && (
@@ -463,25 +479,64 @@ function OuSection({ enabled }: { enabled: boolean }) {
       ) : !ous.data.length ? (
         <p className="text-sm text-muted">Nenhuma OU encontrada na base de busca.</p>
       ) : (
-        <ul className="divide-y divide-line">
-          {ous.data.map((o) => (
-            <li key={o.dn} className="flex flex-wrap items-center gap-3 py-2">
-              <div className="min-w-48 flex-1" style={{ paddingLeft: `${o.depth * 18}px` }}>
-                <p className="text-sm font-semibold">{o.name}</p>
-                <p className="truncate text-xs text-muted" title={o.dn}>
-                  {o.dn}
-                </p>
-              </div>
-              <UnitPicker
-                units={units.data ?? []}
-                value={valueOf(o.dn, o.orgUnitId)}
-                onChange={(id) => setEdits((d) => ({ ...d, [o.dn]: id }))}
-                label={`Unidade da OU ${o.name}`}
-                emptyLabel={o.depth > 0 ? 'Herda da OU de cima' : 'Sem unidade'}
-              />
-            </li>
-          ))}
-        </ul>
+        <>
+          {!visible.length ? (
+            <p className="text-sm text-muted">
+              Nenhuma OU com pessoas na base de busca. Confira a base de busca e o filtro.
+            </p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {visible.map((o) => {
+                const folder = folderOf.get(o.dn.toLowerCase());
+                return (
+                  <li key={o.dn} className="flex flex-wrap items-center gap-3 py-2">
+                    <div
+                      className="min-w-48 flex-1"
+                      style={{ paddingLeft: `${o.depth * 18}px` }}
+                      title={o.dn}
+                    >
+                      <p className="text-sm font-semibold">
+                        {o.name}
+                        {o.accountFolder && (
+                          <span className="ml-2 rounded bg-line/60 px-1.5 py-px text-[11px] font-semibold text-muted">
+                            pasta de contas
+                          </span>
+                        )}
+                        {o.people === 0 && (
+                          <span className="ml-2 rounded bg-line/60 px-1.5 py-px text-[11px] font-semibold text-muted">
+                            sem pessoas
+                          </span>
+                        )}
+                      </p>
+                      <p className="truncate text-xs text-muted">
+                        {o.people} {o.people === 1 ? 'pessoa' : 'pessoas'}
+                        {folder && ` · contas na pasta ${folder}`}
+                      </p>
+                    </div>
+                    <UnitPicker
+                      units={units.data ?? []}
+                      value={valueOf(o.dn, o.orgUnitId)}
+                      onChange={(id) => setEdits((d) => ({ ...d, [o.dn]: id }))}
+                      label={`Unidade da OU ${o.name}`}
+                      emptyLabel={o.depth > 0 ? 'Herda da OU de cima' : 'Sem unidade'}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {(hidden > 0 || showAll) && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="mt-2 text-sm font-semibold text-primary"
+            >
+              {showAll
+                ? 'Esconder OUs sem pessoas e pastas de contas'
+                : `Mostrar todas as OUs (${hidden} escondidas: computadores, impressoras, pastas de contas…)`}
+            </button>
+          )}
+        </>
       )}
       {saveOus.isError && (
         <div className="mt-3">

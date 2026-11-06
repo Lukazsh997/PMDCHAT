@@ -88,7 +88,25 @@ export interface LdapOu {
   depth: number;
   orgUnitId: string | null;
   suggestedOrgUnitId: string | null;
+  /** Pessoas nesta OU e nas de dentro (computadores e impressoras não contam). */
+  people: number;
+  /**
+   * Pasta só de contas (ex.: "USUÁRIOS" dentro de "TI"): não é um setor, quem está nela
+   * fica na unidade da OU de cima.
+   */
+  accountFolder: boolean;
 }
+
+/** Nomes comuns de OUs que só agrupam contas de pessoas dentro de um setor. */
+export const LDAP_ACCOUNT_FOLDER_NAMES = [
+  'usuarios',
+  'users',
+  'contas',
+  'contas de usuario',
+  'contas de usuarios',
+  'accounts',
+  'pessoas',
+];
 
 export const ouMappingsSchema = z.object({
   mappings: z.array(z.object({ dn, orgUnitId: z.uuid() })).max(5000),

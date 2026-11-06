@@ -27,7 +27,7 @@ import {
 import { REDIS } from '../../redis/redis.module.js';
 import { AuditService } from '../audit/index.js';
 import { SessionService } from '../auth/index.js';
-import { type DirectoryPerson, parentDn } from './ldap.gateway.js';
+import { type DirectoryPerson, normalizeDn, parentDn } from './ldap.gateway.js';
 import { LdapSettingsService } from './ldap-settings.service.js';
 
 /** Contas do AD não têm senha local: o login confere a senha no próprio AD. */
@@ -209,7 +209,7 @@ export class LdapSyncService {
     const unitName = new Map(units.map((u) => [u.id, u.acronym || u.name]));
     const roleName = new Map(ldapRoles.map((r) => [r.key, r.name]));
     const protectedIds = new Set(superAdmins.map((s) => s.userId));
-    const ouMap = new Map(ouMaps.map((m) => [m.dn.toLowerCase(), m.orgUnitId]));
+    const ouMap = new Map(ouMaps.map((m) => [normalizeDn(m.dn), m.orgUnitId]));
 
     // Candidatos no sistema: contas já ligadas ao AD e contas locais com o mesmo login.
     const usernames = people.map((p) => p.username);
@@ -260,7 +260,7 @@ export class LdapSyncService {
     const desiredRoles = (p: DirectoryPerson) => {
       const out = new Map<string, { role: string; orgUnitId: string | null }>();
       for (const m of groupMaps) {
-        if (!p.groups.includes(m.dn.toLowerCase())) continue;
+        if (!p.groups.includes(normalizeDn(m.dn))) continue;
         // Super administrador nunca vem de grupo do AD: só é dado à mão, no painel.
         if (m.role === 'super_admin') continue;
         out.set(`${m.role}|${m.orgUnitId ?? ''}`, { role: m.role, orgUnitId: m.orgUnitId });

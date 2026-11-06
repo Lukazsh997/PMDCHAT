@@ -194,7 +194,7 @@ export class LdapGateway {
       displayName: (first(e[c.displayNameAttribute]) ?? first(e.cn) ?? parsed.data).slice(0, 160),
       email: first(e[c.emailAttribute])?.slice(0, 254) || null,
       jobTitle: first(e[c.jobTitleAttribute])?.slice(0, 160) || null,
-      groups: all(e.memberOf).map((g) => g.toLowerCase()),
+      groups: all(e.memberOf).map(normalizeDn),
       disabled: (uac & ACCOUNTDISABLE) !== 0 || expired,
     };
   }
@@ -266,10 +266,65 @@ export function rdnValue(dn: string): string {
   return head.slice(head.indexOf('=') + 1).replace(/\\(.)/g, '$1');
 }
 
-/** DN do "pai": "CN=João,OU=DCA,OU=SEAD,DC=x" → "ou=dca,ou=sead,dc=x" (em minúsculas). */
+/**
+ * Partes de um DN em forma canônica, para comparar DNs vindos de lugares diferentes
+ * (memberOf, busca de OUs, o que foi salvo no painel): atributo e valor em minúsculas,
+ * sem espaços sobrando e com os acentos decodificados — alguns servidores devolvem
+ * "ADMINISTRA\c3\87\c3\83O", outros "ADMINISTRAÇÃO", e os dois são a mesma OU.
+ */
+export function dnParts(dn: string): string[] {
+  const parts: string[] = [];
+  let attr = '';
+  let value = '';
+  let inValue = false;
+  let bytes: number[] = [];
+  const flush = () => {
+    if (bytes.length) value += Buffer.from(bytes).toString('utf8');
+    bytes = [];
+  };
+  const push = () => {
+    flush();
+    if (attr.trim() || value.trim()) {
+      const v = value.trim().replace(/[\\,+"<>;=]/g, (c) => `\\${c}`);
+      parts.push(`${attr.trim()}=${v}`.toLowerCase());
+    }
+    attr = '';
+    value = '';
+    inValue = false;
+  };
+  for (let i = 0; i < dn.length; i++) {
+    const c = dn[i]!;
+    if (c === '\\' && i + 1 < dn.length) {
+      const hex = dn.slice(i + 1, i + 3);
+      if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+        bytes.push(parseInt(hex, 16));
+        i += 2;
+      } else {
+        flush();
+        if (inValue) value += dn[i + 1];
+        else attr += dn[i + 1];
+        i += 1;
+      }
+      continue;
+    }
+    flush();
+    if (c === ',') push();
+    else if (c === '=' && !inValue) inValue = true;
+    else if (inValue) value += c;
+    else attr += c;
+  }
+  push();
+  return parts;
+}
+
+/** DN canônico (ver dnParts). */
+export function normalizeDn(dn: string): string {
+  return dnParts(dn).join(',');
+}
+
+/** DN do "pai", canônico: "CN=João,OU=DCA,OU=SEAD,DC=x" → "ou=dca,ou=sead,dc=x". */
 export function parentDn(dn: string): string {
-  const i = dn.search(/(?<!\\),/);
-  return (i < 0 ? '' : dn.slice(i + 1)).trim().toLowerCase();
+  return dnParts(dn).slice(1).join(',');
 }
 
 /**

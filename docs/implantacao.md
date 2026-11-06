@@ -117,6 +117,13 @@ No painel, siga as quatro etapas na ordem: **Conexão** (preencha, _Testar conex
 **Sincronização** (_Ver o que muda_ mostra a prévia sem gravar nada; depois _Sincronizar agora_).
 A partir daí a sincronização roda sozinha no intervalo configurado (padrão: 60 min).
 
+- Só pessoas são importadas. O filtro padrão (`objectCategory=person` e `objectClass=user`) deixa de
+  fora computadores (que no AD também são `objectClass=user`), impressoras e contatos.
+- Estruturas com pastas por tipo dentro de cada setor (`TI › COMPUTADORES`, `TI › IMPRESSORAS`,
+  `TI › USUÁRIOS`) funcionam como estão: ligue só a OU do setor (`TI`) a uma unidade; quem está em
+  `USUÁRIOS` fica na unidade do setor. O painel esconde as OUs sem pessoas e as pastas de contas.
+- Para importar só uma parte das pessoas, restrinja o filtro em _Opções avançadas_, por exemplo a
+  um grupo: `(&(objectCategory=person)(objectClass=user)(memberOf=CN=Chat-Usuarios,OU=Grupos,DC=orgao,DC=local))`.
 - As pessoas entram com o login da rede: `joao`, `ORGAO\joao` ou `joao@orgao.local`.
 - O super administrador local continua entrando com a senha própria. Mantenha-o como acesso de
   emergência para quando o AD estiver fora do ar.
