@@ -37,7 +37,8 @@ pelo Google Chrome e depende só de software livre.
 
 **Fase 3 — Active Directory:** login com a senha do AD (LDAPS/StartTLS), criação da conta no
 primeiro login, sincronização agendada (nome, e-mail, cargo, lotação pela OU, papéis por grupo,
-desativação de quem sai do AD) e painel de configuração. Ver
+desativação de quem sai do AD) e painel de configuração. Importação da lista de lotação (secretarias, setores e pessoas, a partir
+de uma exportação .sql ou .csv; ver [ADR 0019](docs/adr/0019-lista-de-lotacao.md)). Ver
 [ADR 0018](docs/adr/0018-active-directory.md) e [implantação](docs/implantacao.md#active-directory).
 
 Próxima fase: cliente para Windows com notificações nativas (Fase 4).

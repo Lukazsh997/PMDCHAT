@@ -17,6 +17,7 @@ import {
   ldapOuMappings,
   ldapSettings,
   ldapSyncRuns,
+  rosterEntries,
   orgUnits,
   roleAssignments,
   roles,
@@ -210,6 +211,17 @@ export class LdapSyncService {
     const roleName = new Map(ldapRoles.map((r) => [r.key, r.name]));
     const protectedIds = new Set(superAdmins.map((s) => s.userId));
     const ouMap = new Map(ouMaps.map((m) => [normalizeDn(m.dn), m.orgUnitId]));
+    // Com a lista de lotação ativa, ela diz o setor de cada um e quem pode ter conta.
+    const roster =
+      row.orgUnitSource === 'roster'
+        ? new Map(
+            (
+              await this.db
+                .select({ username: rosterEntries.username, orgUnitId: rosterEntries.orgUnitId })
+                .from(rosterEntries)
+            ).map((r) => [r.username, r.orgUnitId]),
+          )
+        : null;
 
     // Candidatos no sistema: contas já ligadas ao AD e contas locais com o mesmo login.
     const usernames = people.map((p) => p.username);
@@ -249,7 +261,9 @@ export class LdapSyncService {
           )
       : [];
 
-    const resolveUnit = (dn: string, current: string | null): string | null => {
+    const resolveUnit = (p: DirectoryPerson, current: string | null): string | null => {
+      if (roster) return roster.get(p.username) ?? current;
+      const dn = p.dn;
       // A OU mais específica com mapeamento vence: "OU=DCA,OU=SEAD" antes de "OU=SEAD".
       for (let d = parentDn(dn); d; d = parentDn(d)) {
         const hit = ouMap.get(d);
@@ -292,12 +306,19 @@ export class LdapSyncService {
       }
       if (existing) seen.add(existing.id);
 
+      const outside = !!roster && !roster.has(p.username);
+      if (outside && (!existing || existing.authSource !== 'ldap')) {
+        // Fora da lista: não ganha conta (e uma conta local com o mesmo login fica como está).
+        if (!existing) summary.outsideRoster = (summary.outsideRoster ?? 0) + 1;
+        continue;
+      }
+
       const want: Desired = {
         username: p.username,
         displayName: p.displayName,
         email: p.email,
         jobTitle: p.jobTitle,
-        orgUnitId: resolveUnit(p.dn, existing?.orgUnitId ?? null),
+        orgUnitId: resolveUnit(p, existing?.orgUnitId ?? null),
       };
       const emailOwnerId = want.email ? emailOwner.get(want.email.toLowerCase()) : undefined;
       if (emailOwnerId && emailOwnerId !== existing?.id) {
@@ -381,8 +402,9 @@ export class LdapSyncService {
       }
       if (existing.ldapDn !== p.dn) set.ldapDn = p.dn;
 
-      const disable = p.disabled && existing.status === 'active';
-      const reenable = !p.disabled && existing.status === 'disabled' && !!existing.ldapDisabledAt;
+      const disable = (p.disabled || outside) && existing.status === 'active';
+      const reenable =
+        !p.disabled && !outside && existing.status === 'disabled' && !!existing.ldapDisabledAt;
       if (disable) {
         set.status = 'disabled';
         set.ldapDisabledAt = new Date();
@@ -405,7 +427,11 @@ export class LdapSyncService {
             username: existing.username,
             displayName: want.displayName,
             details: [
-              ...(disable ? ['desativada no AD'] : reenable ? ['reativada no AD'] : []),
+              ...(disable
+                ? [outside && !p.disabled ? 'fora da lista de lotação' : 'desativada no AD']
+                : reenable
+                  ? ['reativada']
+                  : []),
               ...details,
               ...roleDetails,
             ],

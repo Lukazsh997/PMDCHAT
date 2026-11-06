@@ -24,6 +24,7 @@ import {
 } from '../../database/schema/index.js';
 import { AuditService } from '../audit/index.js';
 import { RolesService } from './roles.service.js';
+import { UserPurgeService } from './user-purge.service.js';
 import { PasswordService, SessionService } from '../auth/index.js';
 import { OrgService } from '../org/index.js';
 import { type Grants, rolePermissions } from '../rbac/index.js';
@@ -61,6 +62,7 @@ export class AdminUsersService {
     private readonly avatars: AvatarService,
     private readonly events: DomainEvents,
     private readonly roles: RolesService,
+    private readonly purger: UserPurgeService,
   ) {}
 
   /** Lotação ou situação mudou: canais de unidade se ajustam. */
@@ -284,25 +286,7 @@ export class AdminUsersService {
       }
     }
 
-    await this.db.transaction(async (tx) => {
-      await tx
-        .update(users)
-        .set({
-          deletedAt: new Date(),
-          status: 'disabled',
-          // Libera o login para reuso; "#" nunca é aceito num login, então não colide.
-          username: `#excluido-${id}`,
-          email: null,
-          jobTitle: null,
-          externalId: null,
-        })
-        .where(eq(users.id, id));
-      await tx.delete(roleAssignments).where(eq(roleAssignments.userId, id));
-      await tx.delete(userCredentials).where(eq(userCredentials.userId, id));
-    });
-    await this.sessions.revokeAllForUser(id, 'user_deleted');
-    this.changed(id);
-    await this.avatars.remove(id);
+    await this.purger.purge(id);
     await this.record(actor, 'user.deleted', id, {
       username: user.username,
       displayName: user.displayName,

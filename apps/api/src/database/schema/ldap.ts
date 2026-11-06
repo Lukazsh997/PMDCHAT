@@ -36,6 +36,11 @@ export const ldapSettings = pgTable('ldap_settings', {
   defaultOrgUnitId: uuid().references(() => orgUnits.id, { onDelete: 'set null' }),
   autoProvision: boolean().notNull().default(true),
   syncIntervalMinutes: integer().notNull().default(60),
+  /**
+   * De onde vem a lotação: 'ad' (OUs mapeadas) ou 'roster' (lista de lotação importada).
+   * Com 'roster', a lista também diz quem pode ter conta: quem não está nela não entra.
+   */
+  orgUnitSource: varchar({ length: 16 }).notNull().default('ad'),
   updatedBy: uuid().references(() => users.id, { onDelete: 'set null' }),
   updatedAt: updatedAt(),
 });
@@ -75,4 +80,25 @@ export const ldapSyncRuns = pgTable('ldap_sync_runs', {
   summary: jsonb().$type<LdapSyncSummary>(),
   error: text(),
   actorId: uuid().references(() => users.id, { onDelete: 'set null' }),
+});
+
+/**
+ * Lista de lotação importada (ex.: exportação do sistema de RH): quem trabalha em cada
+ * setor. Só login, nome e setor: as demais colunas do arquivo são descartadas.
+ */
+export const rosterEntries = pgTable('roster_entries', {
+  username: varchar({ length: 64 }).primaryKey(),
+  displayName: varchar({ length: 160 }),
+  orgUnitId: uuid().references(() => orgUnits.id, { onDelete: 'set null' }),
+  importId: uuid()
+    .notNull()
+    .references(() => rosterImports.id, { onDelete: 'cascade' }),
+});
+
+export const rosterImports = pgTable('roster_imports', {
+  id: id(),
+  fileName: varchar({ length: 255 }).notNull(),
+  actorId: uuid().references(() => users.id, { onDelete: 'set null' }),
+  summary: jsonb().$type<Record<string, number>>().notNull(),
+  createdAt: createdAt(),
 });

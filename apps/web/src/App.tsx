@@ -4,6 +4,7 @@ import { AccountPage } from './features/account/AccountPage';
 import { AdminLayout } from './features/admin/AdminLayout';
 import { AuditPage } from './features/admin/AuditPage';
 import { LdapPage } from './features/admin/LdapPage';
+import { RosterPage } from './features/admin/RosterPage';
 import { OrgPage } from './features/admin/OrgPage';
 import { OverviewPage } from './features/admin/OverviewPage';
 import { RolesPage } from './features/admin/RolesPage';
@@ -46,6 +47,7 @@ export function App() {
             <Route path="papeis" element={<RolesPage />} />
             <Route path="auditoria" element={<AuditPage />} />
             <Route path="active-directory" element={<LdapPage />} />
+            <Route path="lotacao" element={<RosterPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

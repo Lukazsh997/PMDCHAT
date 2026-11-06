@@ -131,6 +131,24 @@ A partir daí a sincronização roda sozinha no intervalo configurado (padrão: 
 - Se a sincronização fosse desativar muita gente de uma vez (mais de 30%), ela para e pede
   confirmação no painel — geralmente é sinal de base de busca ou filtro errados.
 
+### Lista de lotação
+
+Se a hierarquia secretaria → setor e a lotação de cada pessoa estão em outro sistema (e não nas
+OUs do AD), importe a lista em **Administração → Lotação**. Aceita a exportação da tabela em .sql
+(INSERTs com os nomes das colunas, ou COPY do pg_dump) ou uma planilha .csv. Colunas reconhecidas:
+
+| Dado                                    | Nomes aceitos                               |
+| --------------------------------------- | ------------------------------------------- |
+| Login (o mesmo do AD)                   | `username`, `login`, `usuario`, `matricula` |
+| Nome                                    | `nome`, `name`, `nome_completo`             |
+| Secretaria                              | `unidade`, `secretaria`, `orgao`            |
+| Setor                                   | `setor`, `departamento`, `lotacao`          |
+| Código do setor (opcional, recomendado) | `setor_id`, `id_setor`, `cod_setor`         |
+
+Exporte só essas colunas: o resto (senhas, fotos, CPF…) é ignorado, mas não precisa sair do
+sistema de origem. A prévia mostra o que muda e nada é gravado antes de confirmar. Depois da
+importação, **só tem conta pelo AD quem está na lista**; reimporte quando houver mudanças.
+
 **Problemas comuns:** "O AD recusou a conta de serviço" → DN ou senha da conta de serviço; "self
 signed certificate" ou "unable to verify" → falta o certificado da AC; "ECONNREFUSED"/"timeout" →
 porta bloqueada entre a VM e o AD; a busca encontra 0 pessoas → base de busca ou filtro.

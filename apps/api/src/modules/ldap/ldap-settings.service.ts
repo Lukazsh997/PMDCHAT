@@ -140,6 +140,7 @@ function toDto(r: Row): LdapSettings {
     defaultOrgUnitId: r.defaultOrgUnitId,
     autoProvision: r.autoProvision,
     syncIntervalMinutes: r.syncIntervalMinutes,
+    orgUnitSource: r.orgUnitSource === 'roster' ? 'roster' : 'ad',
     updatedAt: r.updatedAt?.toISOString() ?? null,
   };
 }

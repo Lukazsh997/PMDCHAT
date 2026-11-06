@@ -92,6 +92,13 @@
       "when": 1793906509939,
       "tag": "0012_fase3_active_directory",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793977783489,
+      "tag": "0013_fase3_lista_de_lotacao",
+      "breakpoints": true
     }
   ]
 }

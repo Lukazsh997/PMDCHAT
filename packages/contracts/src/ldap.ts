@@ -29,6 +29,8 @@ export interface LdapSettings {
   /** Cria a conta de quem existe no AD e ainda não está no sistema (na sincronização e no 1º login). */
   autoProvision: boolean;
   syncIntervalMinutes: number;
+  /** De onde vem a lotação: OUs do AD ou a lista de lotação importada. */
+  orgUnitSource: 'ad' | 'roster';
   updatedAt: string | null;
 }
 
@@ -142,6 +144,8 @@ export interface LdapSyncSummary {
   reenabled: number;
   roleChanges: number;
   unchanged: number;
+  /** Pessoas do AD fora da lista de lotação (não ganham conta). */
+  outsideRoster?: number;
   /** Pessoas do AD que não puderam ser importadas (ex.: e-mail já usado). */
   problems: string[];
   /** A sincronização desativaria gente demais: só segue com confirmação. */

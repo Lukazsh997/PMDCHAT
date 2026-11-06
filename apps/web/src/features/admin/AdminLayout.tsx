@@ -12,6 +12,7 @@ export function AdminLayout() {
     { to: '/admin/papeis', label: 'Papéis', show: can('users.read') },
     { to: '/admin/auditoria', label: 'Auditoria', show: can('audit.read') },
     { to: '/admin/active-directory', label: 'Active Directory', show: can('settings.manage') },
+    { to: '/admin/lotacao', label: 'Lotação', show: can('settings.manage') },
   ].filter((t) => t.show);
 
   if (me.mfaSetupRequired) {

@@ -39,7 +39,9 @@ export type AuditAction =
   | 'broadcast.sent'
   | 'ldap.settings_changed'
   | 'ldap.mappings_changed'
-  | 'ldap.sync';
+  | 'ldap.sync'
+  | 'roster.imported'
+  | 'roster.deactivated';
 
 export interface AuditEntry {
   action: AuditAction;

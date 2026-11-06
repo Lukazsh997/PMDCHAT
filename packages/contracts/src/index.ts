@@ -11,3 +11,4 @@ export * from './realtime.js';
 /** Prefixo versionado de todas as rotas REST. */
 export const API_PREFIX = '/api/v1';
 export * from './ldap.js';
+export * from './roster.js';

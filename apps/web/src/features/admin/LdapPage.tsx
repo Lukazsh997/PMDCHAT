@@ -21,6 +21,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import { Alert, Button, Dialog, Select, Spinner, TextField, toast } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
 import { useOrgUnits, useRoles } from './admin-api';
@@ -67,7 +68,7 @@ export function LdapPage() {
         </p>
       </div>
       <ConnectionSection settings={s} />
-      <OuSection enabled={connected} />
+      <OuSection enabled={connected} fromRoster={s.orgUnitSource === 'roster'} />
       <GroupSection enabled={connected} />
       <SyncSection settings={s} connected={connected} />
     </div>
@@ -401,7 +402,7 @@ function NeedsConnection() {
 
 /* ------------------------------ OUs → unidades ----------------------------- */
 
-function OuSection({ enabled }: { enabled: boolean }) {
+function OuSection({ enabled, fromRoster }: { enabled: boolean; fromRoster: boolean }) {
   const ous = useLdapOus(enabled);
   const units = useOrgUnits();
   const { saveOus } = useLdapMutations();
@@ -470,6 +471,16 @@ function OuSection({ enabled }: { enabled: boolean }) {
         )
       }
     >
+      {fromRoster && (
+        <p className="mb-4 rounded-[var(--radius-control)] border border-primary/30 bg-primary-soft px-3 py-2.5 text-sm">
+          A lotação está vindo da{' '}
+          <Link to="/admin/lotacao" className="font-semibold text-primary">
+            lista de lotação importada
+          </Link>
+          , que também diz quem pode ter conta. Este mapeamento de OUs fica guardado, mas não está
+          em uso.
+        </p>
+      )}
       {!enabled ? (
         <NeedsConnection />
       ) : ous.isPending || units.isPending ? (

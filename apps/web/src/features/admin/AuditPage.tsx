@@ -40,6 +40,8 @@ const ACTIONS: Record<string, string> = {
   'ldap.settings_changed': 'Alterou a conexão com o AD',
   'ldap.mappings_changed': 'Alterou o mapeamento do AD',
   'ldap.sync': 'Sincronizou com o AD',
+  'roster.imported': 'Importou a lista de lotação',
+  'roster.deactivated': 'Desligou a lista de lotação',
 };
 
 const GROUPS = [
