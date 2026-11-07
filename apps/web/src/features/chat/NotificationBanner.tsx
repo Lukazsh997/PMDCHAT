@@ -29,7 +29,7 @@ export function NotificationBanner() {
 
   const text =
     state === 'blocked-insecure'
-      ? 'O navegador bloqueia notificações neste endereço. Peça à TI para liberar o sistema na política do Chrome.'
+      ? 'O navegador só permite notificações em HTTPS. Peça à TI para ligar o HTTPS do sistema.'
       : state === 'denied'
         ? 'As notificações estão bloqueadas. Libere-as no ícone de cadeado da barra de endereço.'
         : 'Receba um aviso quando chegar mensagem, mesmo com a aba em segundo plano.';

@@ -1,6 +1,6 @@
 # ADR 0004 — HTTP sem certificado nesta fase
 
-**Status:** aceita (03/11/2026), por decisão da organização
+**Status:** substituída pela [ADR 0020](0020-https-sem-custo.md) (07/11/2026). Era: aceita (03/11/2026), por decisão da organização
 
 **Decisão.** O site roda em HTTP na rede interna. O cookie de sessão não usa o atributo
 `Secure` e a API não envia HSTS; ambos são ligados por configuração (`COOKIE_SECURE=true`).

@@ -71,6 +71,7 @@ Guia completo em [docs/implantacao.md](docs/implantacao.md).
 ```bash
 git clone https://github.com/Lukazsh997/PMDCHAT.git /opt/plataforma && cd /opt/plataforma
 infra/scripts/install.sh      # gera o .env, constrói as imagens e sobe tudo
+infra/scripts/https.sh interna  # HTTPS sem custo (depois: AC nas estações por GPO)
 ```
 
 Atualizar uma instalação existente:
@@ -85,6 +86,7 @@ git pull && infra/scripts/update.sh   # backup + variáveis novas + imagens + mi
 | Senha temporária              | `docker compose run --rm api cli reset-password <usuário>` |
 | Celular perdido (duas etapas) | `docker compose run --rm api cli reset-mfa <usuário>`      |
 | Logs da API                   | `docker compose logs -f api`                               |
+| Certificado do HTTPS          | `infra/scripts/https.sh status`                            |
 
 ## Desenvolvimento local
 
@@ -117,7 +119,7 @@ login, anexos e o antivírus através do Nginx.
 1. [Monólito modular](docs/adr/0001-monolito-modular.md)
 2. [TypeScript de ponta a ponta com NestJS e ES modules](docs/adr/0002-typescript-nestjs.md)
 3. [Sessões no servidor em vez de JWT](docs/adr/0003-sessoes-no-servidor.md)
-4. [HTTP sem certificado nesta fase](docs/adr/0004-http-nesta-fase.md)
+4. [HTTP sem certificado nesta fase](docs/adr/0004-http-nesta-fase.md) (substituída pela 20)
 5. [Valkey em vez de Redis](docs/adr/0005-valkey.md)
 6. [Organograma com caminho materializado](docs/adr/0006-organograma-caminho-materializado.md)
 7. [Envio por REST, entrega por tempo real](docs/adr/0007-envio-rest-entrega-tempo-real.md)
@@ -131,3 +133,6 @@ login, anexos e o antivírus através do Nginx.
 15. [Canais de aviso com membros pela lotação](docs/adr/0015-canais-de-aviso.md)
 16. [Papéis editáveis no banco](docs/adr/0016-papeis-editaveis.md)
 17. [Web Push e PWA](docs/adr/0017-web-push-pwa.md)
+18. [Integração com o Active Directory](docs/adr/0018-active-directory.md)
+19. [Lista de lotação importada](docs/adr/0019-lista-de-lotacao.md)
+20. [HTTPS sem custo (AC interna ou AD CS)](docs/adr/0020-https-sem-custo.md)

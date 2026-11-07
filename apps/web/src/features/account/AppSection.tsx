@@ -18,7 +18,7 @@ export function AppSection() {
 
   const pushText =
     notify === 'blocked-insecure' || push === 'unavailable'
-      ? 'Indisponível neste endereço. A TI precisa incluir o sistema na política do Chrome (OverrideSecurityRestrictionsOnInsecureOrigin).'
+      ? 'Indisponível neste endereço: o navegador exige HTTPS. A TI pode ligar o HTTPS do sistema (sem custo) ou liberar o endereço na política do Chrome.'
       : notify === 'denied'
         ? 'Bloqueado neste navegador. Libere as notificações no ícone ao lado do endereço.'
         : push === 'on'
@@ -62,7 +62,7 @@ export function AppSection() {
               ? 'Você está usando o sistema instalado como aplicativo.'
               : canInstall
                 ? 'Instale para abrir o sistema numa janela própria, com ícone na barra de tarefas.'
-                : 'Pelo Chrome: menu ⋮ › Transmitir, salvar e compartilhar › Instalar página como app. Em endereço sem HTTPS, depende da mesma política do Chrome dos avisos.'}
+                : 'Pelo Chrome: menu ⋮ › Transmitir, salvar e compartilhar › Instalar página como app. Em endereço sem HTTPS, o Chrome não oferece a instalação.'}
           </p>
         </div>
         {canInstall && !installed && (

@@ -60,21 +60,17 @@ O sistema aceita login por qualquer endereço que chegue à VM: nome DNS, IP ou 
 A API só recusa alterações vindas de **outros sites** (proteção CSRF). `APP_ORIGINS` serve
 para registrar o endereço principal e origens extras, como o servidor de desenvolvimento.
 
-## Política do Chrome para HTTP (obrigatória para notificações)
+## HTTPS (recomendado, sem custo)
 
-O Chrome só permite notificações, Service Worker, Web Push e instalação como aplicativo (PWA) em
-contexto seguro (HTTPS). Como o site roda em HTTP nesta fase, cadastre o endereço interno na
-política `OverrideSecurityRestrictionsOnInsecureOrigin`, distribuída por GPO:
-
-- Modelo administrativo: _Google Chrome → Configurações de conteúdo_ (ADMX do Chrome Enterprise)
-- Valor: a mesma lista de `APP_ORIGINS`, sem `localhost`
-
-Até lá, o login, a navegação e as funções desta fase funcionam normalmente; apenas os recursos
-acima ficam bloqueados pelo navegador.
+Com HTTPS, senhas e mensagens trafegam cifradas na rede, e o Chrome libera notificações, avisos
+com a aba fechada (Web Push) e a instalação como aplicativo — sem política especial nas estações.
+Ver [HTTPS](#https) abaixo. Enquanto o site estiver em HTTP, esses recursos só funcionam com a
+política `OverrideSecurityRestrictionsOnInsecureOrigin` do Chrome (GPO, modelo _Google Chrome →
+Configurações de conteúdo_), com a lista de endereços de `APP_ORIGINS` sem `localhost`.
 
 ## Web Push (avisos com a aba fechada)
 
-Com a política acima, cada pessoa que permitir notificações passa a receber avisos também com a
+Com HTTPS (ou a política acima), cada pessoa que permitir notificações passa a receber avisos também com a
 aba do sistema fechada, desde que o Chrome esteja aberto. O envio passa pelo serviço de push do
 Google (FCM), então:
 
@@ -92,7 +88,7 @@ aplicativo**.
 
 ## Aplicativo instalável (PWA)
 
-Com a mesma política do Chrome, o sistema pode ser instalado como aplicativo: janela própria e
+Com HTTPS (ou a mesma política do Chrome), o sistema pode ser instalado como aplicativo: janela própria e
 ícone na barra de tarefas, sem instalador. Em **Minha conta → Notificações e aplicativo** aparece o
 botão **Instalar** quando o Chrome oferece; também pelo menu ⋮ → _Transmitir, salvar e
 compartilhar → Instalar página como app_. Para instalar em todas as estações, use a política
@@ -182,20 +178,105 @@ conseguiu iniciar. O `install.sh` mostra as últimas linhas do log; manualmente:
 | `ECONNREFUSED … 5432` ou `password authentication failed`                      | O volume do banco foi criado com outra senha. Se ainda não há dados: `docker compose down -v` e instale de novo                                                                           |
 
 **Avisos com a aba fechada não chegam:** em _Minha conta_, o estado deve ser "Ativo". Se aparecer
-"Indisponível neste endereço", falta a política do Chrome. Se a política existe mas nada chega,
+"Indisponível neste endereço", o site está em HTTP: ligue o [HTTPS](#https). Se a política existe mas nada chega,
 veja `docker compose logs worker | grep push`: falhas de conexão indicam que a VM não alcança
 `fcm.googleapis.com` (libere a saída ou configure `PUSH_PROXY`).
+
+**Depois de ligar o HTTPS:**
+
+- _"Sua conexão não é particular"_ (`NET::ERR_CERT_AUTHORITY_INVALID`): a estação ainda não confia
+  na AC. Confira a GPO (`gpupdate /force`; no Windows, `certlm.msc` → _Autoridades de Certificação
+  Raiz Confiáveis_ deve listar a AC) e feche e abra o Chrome.
+- `NET::ERR_CERT_COMMON_NAME_INVALID`: o endereço digitado não está no certificado. Inclua-o
+  (`https.sh interna novo-nome`) ou acesse pelo nome principal.
+- O site não abre em `https://`: a porta 443 está bloqueada no firewall da VM ou da rede.
+- O login volta para a tela de entrada sem erro: acesso por `http://` com `COOKIE_SECURE=true`.
+  Use o endereço `https://` (o `https.sh` mantém os dois ajustes juntos).
 
 Para editar o projeto no Windows, mantenha as quebras de linha Unix (LF). O arquivo
 `.gitattributes` já faz isso no Git; no editor, use LF para `.sh`, `.env` e `.conf`.
 
-## Ativar HTTPS depois
+## HTTPS
 
-Nenhuma mudança de código é necessária:
+O HTTPS não tem custo. Tudo é feito pelo `infra/scripts/https.sh`, que gera ou importa o
+certificado, ajusta o `.env` (`COOKIE_SECURE=true` e `https://` em `APP_ORIGINS`) e reinicia o Nginx
+e a API. Depois disso, quem digitar `http://` é levado ao `https://` automaticamente.
 
-1. Coloque o certificado e a chave em `infra/nginx/certs/`.
-2. Adicione um bloco `listen 443 ssl` ao `infra/nginx/default.conf` (mantendo o de 80
-   redirecionando para 443) e publique a porta 443 no `docker-compose.yml`.
-3. No `.env`: `COOKIE_SECURE=true` e troque `http://` por `https://` em `APP_ORIGINS`.
-4. `docker compose up -d --build`. A API passa a enviar HSTS automaticamente.
-5. Remova a política `OverrideSecurityRestrictionsOnInsecureOrigin` das estações.
+Libere a porta **443** no firewall da VM (e `HTTPS_PORT` no `.env`, se quiser outra).
+
+### Qual certificado usar
+
+| Situação                                                                                     | Opção                                                                            |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| O AD tem **Serviços de Certificados (AD CS)**                                                | **B** — o certificado da AC do AD já é confiável em todas as estações do domínio |
+| Não há AD CS (ou a TI prefere não usar)                                                      | **A** — AC interna da plataforma, distribuída por GPO                            |
+| O sistema tem nome num **domínio público** da organização (ex.: `chat.prefeitura.rj.gov.br`) | **B** com Let's Encrypt (validação por DNS)                                      |
+
+Nomes internos (`.local`) e IPs da rede interna não conseguem certificado do Let's Encrypt nem de
+outra AC pública: use A ou B com o AD CS. O Let's Encrypt vence a cada 90 dias e, para um servidor
+interno, exige validar por DNS (ex.: `certbot certonly --manual --preferred-challenges dns -d
+chat.prefeitura.rj.gov.br`) a cada renovação; por isso A ou o AD CS costumam ser mais simples.
+
+### A. AC interna da plataforma
+
+```bash
+cd /opt/plataforma
+sudo infra/scripts/https.sh interna                       # usa os endereços de APP_ORIGINS
+sudo infra/scripts/https.sh interna chat 192.168.0.10     # + nomes/IPs extras
+```
+
+O script cria uma Autoridade Certificadora (AC) só da plataforma e emite o certificado do site
+(válido por 825 dias). A AC é **restrita por nome**: ela só vale para o domínio do sistema (ex.:
+`orgao.local`) e IPs da rede interna. Mesmo instalada em todas as estações, não consegue se passar
+por nenhum outro site.
+
+Falta só fazer as estações confiarem na AC, **uma vez**, por GPO:
+
+1. Copie `infra/nginx/ca/ca.crt` da VM (ou baixe em `http://<endereço>/certificado-ac.crt`).
+2. No _Gerenciamento de Política de Grupo_, numa GPO ligada às OUs dos computadores:
+   _Configuração do Computador → Políticas → Configurações do Windows → Configurações de
+   Segurança → Políticas de Chave Pública → Autoridades de Certificação Raiz Confiáveis_ →
+   botão direito → _Importar_ → `ca.crt`.
+3. Nas estações: `gpupdate /force` (ou aguarde a próxima atualização da política). Chrome e Edge
+   usam o repositório do Windows e passam a confiar sozinhos.
+
+Computadores fora do domínio precisam importar o `ca.crt` manualmente (duplo clique → _Instalar
+certificado_ → _Máquina local_ → _Autoridades de Certificação Raiz Confiáveis_).
+
+**Guarde a pasta `infra/nginx/ca` fora da VM** (o `backup.sh` já a inclui). Sem a chave da AC, a
+renovação exige gerar e distribuir uma AC nova. Para renovar sozinho, agende no cron da VM:
+
+```
+0 3 1 * * /opt/plataforma/infra/scripts/https.sh renovar-auto
+```
+
+(renova quando faltam menos de 60 dias; o `update.sh` também avisa).
+
+### B. Certificado de uma AC existente (AD CS, Let's Encrypt…)
+
+1. Peça à equipe do AD um certificado de **servidor web** para o nome do sistema (e o IP, se for
+   acessado por IP), com a chave privada exportável. No AD CS: modelo _Servidor Web_; exporte em
+   `.pfx` e converta na VM:
+   ```bash
+   openssl pkcs12 -in chat.pfx -nocerts -nodes -out chave.pem
+   openssl pkcs12 -in chat.pfx -clcerts -nokeys -out certificado.pem
+   openssl pkcs12 -in chat.pfx -cacerts -nokeys -out cadeia.pem
+   ```
+2. Importe:
+   ```bash
+   sudo infra/scripts/https.sh importar certificado.pem chave.pem cadeia.pem
+   ```
+   O script confere se a chave corresponde ao certificado, se ele está válido e se cobre os
+   endereços de `APP_ORIGINS`. Aceita `.cer` (DER) do Windows. Apague `chave.pem` e o `.pfx`
+   depois.
+3. Antes de vencer, importe o certificado novo da mesma forma.
+
+### Comandos úteis
+
+```bash
+sudo infra/scripts/https.sh status     # certificado em uso, nomes e vencimento
+sudo infra/scripts/https.sh desligar   # volta para HTTP (guarda os certificados)
+```
+
+Ao desligar, navegadores que já abriram o site em HTTPS insistem nele por até 180 dias (HSTS):
+desligue só se for voltar a ligar, ou para resolver um problema pontual.
