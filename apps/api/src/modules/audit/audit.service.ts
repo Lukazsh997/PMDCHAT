@@ -36,7 +36,12 @@ export type AuditAction =
   | 'message.deleted'
   | 'message.deleted_by_moderator'
   | 'file.rejected'
-  | 'broadcast.sent';
+  | 'broadcast.sent'
+  | 'ldap.settings_changed'
+  | 'ldap.mappings_changed'
+  | 'ldap.sync'
+  | 'roster.imported'
+  | 'roster.deactivated';
 
 export interface AuditEntry {
   action: AuditAction;

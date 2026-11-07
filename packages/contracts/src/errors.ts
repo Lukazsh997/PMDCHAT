@@ -24,6 +24,7 @@ export const API_ERROR_CODES = [
   'MFA_INVALID',
   'FILE_REJECTED',
   'SCAN_UNAVAILABLE',
+  'DIRECTORY_UNAVAILABLE',
   'INTERNAL_ERROR',
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

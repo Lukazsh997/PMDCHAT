@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { ChangePasswordRequest, LoginRequest, SessionDevice } from '@plataforma/contracts';
 import { AppException } from '../../common/app-exception.js';
 import { APP_CONFIG, type AppConfig } from '../../config/config.js';
@@ -6,6 +6,11 @@ import type { UserRow } from '../../database/schema/index.js';
 import { AuditService } from '../audit/index.js';
 import { isUsable, UsersService } from '../users/index.js';
 import type { ActiveSession, AuthContext } from './auth.types.js';
+import {
+  EXTERNAL_AUTH,
+  type ExternalAuthenticator,
+  ExternalAuthUnavailableError,
+} from './external-auth.js';
 import { MfaService } from './mfa.service.js';
 import { PasswordService } from './password.service.js';
 import { SessionService } from './session.service.js';
@@ -36,10 +41,53 @@ export class AuthService {
     private readonly sessions: SessionService,
     private readonly mfa: MfaService,
     private readonly audit: AuditService,
+    /** Active Directory (Fase 3); ausente nos testes que não o usam. */
+    @Optional() @Inject(EXTERNAL_AUTH) private readonly external?: ExternalAuthenticator,
   ) {}
 
   async login(input: LoginRequest, meta: ClientMeta): Promise<LoginResult> {
-    const found = await this.users.findForLogin(input.username);
+    let found = await this.users.findForLogin(input.username);
+
+    // Conta do AD (ou pessoa que ainda não tem conta aqui): a senha é conferida no AD.
+    if (found?.user.authSource === 'ldap' || (!found && this.external)) {
+      if (found?.credentials) this.ensureNotLocked(found.credentials.lockedUntil);
+      const result = await this.authenticateExternal(input.username, input.password);
+      if (result === 'invalid' || result === 'not_provisioned' || result === null) {
+        if (found?.credentials) {
+          await this.registerFailure(found.user, found.credentials.failedAttempts + 1, meta);
+        } else {
+          await this.audit.record({
+            action: 'auth.login_failed',
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            metadata: {
+              username: input.username,
+              reason: result === 'not_provisioned' ? 'ldap_not_provisioned' : 'unknown_user',
+            },
+          });
+        }
+        if (result === null && found) {
+          throw new AppException(
+            403,
+            'ACCOUNT_INACTIVE',
+            'O login pelo Active Directory está desligado. Procure o administrador.',
+          );
+        }
+        if (result === 'not_provisioned') {
+          throw new AppException(
+            403,
+            'ACCOUNT_INACTIVE',
+            'Sua conta do Active Directory ainda não foi liberada neste sistema. Procure o administrador.',
+          );
+        }
+        throw invalidCredentials();
+      }
+      // Recarrega: o login no AD pode ter criado a conta ou mudado nome, lotação e situação.
+      found = await this.users.findForLogin(input.username);
+      if (!found?.credentials) throw invalidCredentials();
+      await this.ensureUsable(found.user, meta);
+      return this.afterPassword(found.user, found.credentials, meta);
+    }
 
     if (!found?.credentials) {
       await this.passwords.verifyDummy(input.password);
@@ -65,7 +113,16 @@ export class AuthService {
     const rehash = this.passwords.needsRehash(credentials.passwordHash)
       ? await this.passwords.hash(input.password)
       : undefined;
+    return this.afterPassword(user, credentials, meta, rehash);
+  }
 
+  /** Senha conferida (local ou no AD): pede o código do MFA, se ativo, ou abre a sessão. */
+  private async afterPassword(
+    user: UserRow,
+    credentials: { mfaEnabledAt: Date | null; mfaSecretEnc: string | null },
+    meta: ClientMeta,
+    rehash?: string,
+  ): Promise<LoginResult> {
     if (credentials.mfaEnabledAt && credentials.mfaSecretEnc) {
       if (rehash) await this.users.setPassword(user.id, rehash, user.mustChangePassword);
       const challengeId = await this.mfa.createChallenge({
@@ -77,6 +134,22 @@ export class AuthService {
 
     await this.users.recordSuccessfulLogin(user.id, rehash);
     return this.openSession(user.id, meta);
+  }
+
+  private async authenticateExternal(username: string, password: string) {
+    if (!this.external) return null;
+    try {
+      return await this.external.authenticate(username, password);
+    } catch (e) {
+      if (e instanceof ExternalAuthUnavailableError) {
+        throw new AppException(
+          503,
+          'DIRECTORY_UNAVAILABLE',
+          'Não foi possível falar com o Active Directory agora. Tente de novo em instantes ou procure o suporte.',
+        );
+      }
+      throw e;
+    }
   }
 
   /** Segunda etapa do login: código do aplicativo autenticador. */
@@ -207,8 +280,16 @@ export class AuthService {
   }
 
   private async requirePassword(userId: string, password: string, field: string, message: string) {
-    const credentials = await this.users.findCredentials(userId);
-    const valid = credentials && (await this.passwords.verify(credentials.passwordHash, password));
+    const loaded = await this.users.load(userId);
+    let valid: boolean;
+    if (loaded?.user.authSource === 'ldap') {
+      // Conta do AD: a senha que vale é a do AD.
+      const r = await this.authenticateExternal(loaded.user.username, password);
+      valid = typeof r === 'object' && r !== null && r.userId === userId;
+    } else {
+      const credentials = await this.users.findCredentials(userId);
+      valid = !!credentials && (await this.passwords.verify(credentials.passwordHash, password));
+    }
     if (!valid)
       throw new AppException(400, 'VALIDATION_FAILED', 'Dados inválidos', { [field]: [message] });
   }

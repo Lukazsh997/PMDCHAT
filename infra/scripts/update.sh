@@ -17,6 +17,12 @@ docker compose build
 echo "4/4 Reiniciando serviços (na primeira vez o antivírus baixa as assinaturas: alguns minutos)"
 if docker compose up -d --wait --wait-timeout 600; then
   echo "Atualização concluída."
+  # Aviso de certificado do HTTPS perto de vencer (o site para de abrir quando vence).
+  crt=infra/nginx/certs/server.crt
+  if [[ -s "$crt" ]] && ! openssl x509 -in "$crt" -noout -checkend $((60 * 86400)) >/dev/null 2>&1; then
+    echo "ATENÇÃO: o certificado do HTTPS vence em $(openssl x509 -in "$crt" -noout -enddate | cut -d= -f2)."
+    echo "Renove com: infra/scripts/https.sh renovar (AC interna) ou importe o novo certificado."
+  fi
   exit 0
 fi
 docker compose ps

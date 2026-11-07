@@ -85,6 +85,20 @@
       "when": 1793905988406,
       "tag": "0011_fase2_sem_mencoes_reacao_unica",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793906509939,
+      "tag": "0012_fase3_active_directory",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793977783489,
+      "tag": "0013_fase3_lista_de_lotacao",
+      "breakpoints": true
     }
   ]
 }

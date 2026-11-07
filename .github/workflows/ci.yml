@@ -75,6 +75,31 @@ jobs:
           printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > eicar.txt
           code=$(curl -s -b jar -H "$O" -o resp.json -w '%{http_code}' -F file=@eicar.txt http://localhost/api/v1/files)
           echo "upload EICAR: $code $(cat resp.json)"; test "$code" = 422
+      - name: HTTPS com a AC interna (infra/scripts/https.sh)
+        run: |
+          set -e
+          infra/scripts/https.sh interna localhost
+          grep -q '^COOKIE_SECURE=true' .env
+          grep -q '^APP_ORIGINS=https://localhost' .env
+          CA="--cacert infra/nginx/ca/ca.crt"
+          H='content-type: application/json'
+          O='origin: https://localhost'
+          # HTTP só redireciona; o certificado público da AC fica disponível para as estações.
+          test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost/conversas)" = '301 https://localhost/conversas'
+          curl -fsS http://localhost/certificado-ac.crt | openssl x509 -noout -subject
+          curl -fsS $CA https://localhost/api/v1/health
+          curl -fsSI $CA https://localhost/ | grep -qi 'strict-transport-security: max-age'
+          # Sem confiar na AC, o certificado é recusado.
+          ! curl -fsS https://localhost/ -o /dev/null 2>/dev/null
+          # Login por HTTPS: cookie de sessão com Secure.
+          curl -fsS $CA -D headers -c jar -H "$H" -H "$O" \
+            -d '{"username":"admin","password":"NovaSenhaDoCI2026"}' \
+            https://localhost/api/v1/auth/login > /dev/null
+          grep -i '^set-cookie' headers | grep -qi 'secure'
+          curl -fsS $CA -b jar https://localhost/api/v1/auth/me > /dev/null
+          # TLS antigo recusado.
+          ! openssl s_client -connect localhost:443 -tls1_1 </dev/null >/dev/null 2>&1
+          infra/scripts/https.sh status
       - name: Logs em caso de falha
         if: failure()
         run: docker compose logs --tail 100
