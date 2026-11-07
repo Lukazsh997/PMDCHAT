@@ -48,13 +48,14 @@ origin_hosts() {
 
 is_ip() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "$1" == *:* ]]; }
 
-# APP_ORIGINS passa para https:// (localhost do desenvolvimento fica como está).
+# APP_ORIGINS passa para https:// (o servidor de desenvolvimento fica como está).
 switch_origins() {
   local scheme="$1" port out=() o
   port=$(env_get HTTPS_PORT); port="${port:-443}"
   IFS=',' read -ra list <<< "$(env_get APP_ORIGINS)"
   for o in "${list[@]}"; do
-    if [[ "$o" == *://localhost* || "$o" == *://127.0.0.1* ]]; then out+=("$o"); continue; fi
+    # Servidor de desenvolvimento (localhost com porta, ex.: :5173) fica como está.
+    if [[ "$o" =~ ://(localhost|127\.0\.0\.1):[0-9]+$ ]]; then out+=("$o"); continue; fi
     local h="${o#*://}"; h="${h%%/*}"
     if [[ "$h" != \[* ]]; then h="${h%%:*}"; fi
     if [[ "$scheme" == https && "$port" != 443 ]]; then out+=("https://$h:$port");
