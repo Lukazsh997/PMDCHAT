@@ -6,6 +6,7 @@ import {
   type PublicUser,
 } from '@plataforma/contracts';
 import { and, count, eq, inArray, isNull } from 'drizzle-orm';
+import { AppException } from '../../common/app-exception.js';
 import { DB, type Database } from '../../database/database.js';
 import {
   type NewUserRow,
@@ -168,6 +169,29 @@ export class UsersService {
       .set({ mfaSecretEnc: secretEnc, mfaEnabledAt: secretEnc ? new Date() : null })
       .where(eq(userCredentials.userId, userId));
   }
+  /**
+   * Primeiro acesso de quem entrou pelo AD sem estar na lista: grava a lotação escolhida
+   * e libera o acesso. Só vale enquanto a escolha estiver pendente (não troca a lotação
+   * depois — isso é com o administrador). O setor precisa existir e estar ativo.
+   */
+  async chooseOrgUnit(userId: string, orgUnitId: string): Promise<void> {
+    const [unit] = await this.db
+      .select({ id: orgUnits.id, isActive: orgUnits.isActive })
+      .from(orgUnits)
+      .where(eq(orgUnits.id, orgUnitId))
+      .limit(1);
+    if (!unit || !unit.isActive) {
+      throw new AppException(400, 'VALIDATION_FAILED', 'Setor inválido ou inativo.');
+    }
+    const res = await this.db
+      .update(users)
+      .set({ orgUnitId, mustChooseOrgUnit: false })
+      .where(and(eq(users.id, userId), eq(users.mustChooseOrgUnit, true)))
+      .returning({ id: users.id });
+    if (!res.length) {
+      throw new AppException(409, 'CONFLICT', 'A lotação já foi definida.');
+    }
+  }
 
   /** Pessoas para exibir (diretório, membros de conversa), com a lotação. */
   async directoryUsers(ids: string[]): Promise<Map<string, DirectoryUser>> {
@@ -192,6 +216,7 @@ export class UsersService {
       authSource: u.authSource,
       orgUnit: unitRef(unit),
       mustChangePassword: u.mustChangePassword,
+      mustChooseOrgUnit: u.mustChooseOrgUnit,
       mfaEnabled,
       avatarUrl: avatarUrl(u),
     };

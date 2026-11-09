@@ -4,8 +4,6 @@ import {
   type AdminUserList,
   type AssignRoleRequest,
   type RoleAssignment,
-  type RoleKey,
-  ROLES,
   type UpdateUserRequest,
   type UserStatus,
   createUserSchema,
@@ -13,19 +11,23 @@ import {
 import { and, count, desc, eq, ilike, inArray, isNull, like, or, type SQL, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { AppException } from '../../common/app-exception.js';
+import { DomainEvents } from '../../common/events/domain-events.js';
 import { DB, type Database } from '../../database/database.js';
 import {
   orgUnits,
   type OrgUnitRow,
   roleAssignments,
+  roles,
   userCredentials,
   type UserRow,
   users,
 } from '../../database/schema/index.js';
 import { AuditService } from '../audit/index.js';
+import { RolesService } from './roles.service.js';
+import { UserPurgeService } from './user-purge.service.js';
 import { PasswordService, SessionService } from '../auth/index.js';
 import { OrgService } from '../org/index.js';
-import type { Grants } from '../rbac/index.js';
+import { type Grants, rolePermissions } from '../rbac/index.js';
 import { AvatarService, unitRef, UsersService } from '../users/index.js';
 
 type CreateInput = z.output<typeof createUserSchema>;
@@ -58,7 +60,15 @@ export class AdminUsersService {
     private readonly org: OrgService,
     private readonly audit: AuditService,
     private readonly avatars: AvatarService,
+    private readonly events: DomainEvents,
+    private readonly roles: RolesService,
+    private readonly purger: UserPurgeService,
   ) {}
+
+  /** Lotação ou situação mudou: canais de unidade se ajustam. */
+  private changed(userId: string): void {
+    this.events.emit('user.membership_changed', { userId });
+  }
 
   async list(actor: Actor, f: ListFilter): Promise<AdminUserList> {
     const conditions: SQL[] = [isNull(users.deletedAt)];
@@ -142,6 +152,7 @@ export class AdminUsersService {
     } catch (e) {
       throw this.translateUnique(e);
     }
+    this.changed(created.id);
     await this.record(actor, 'user.created', created.id, {
       username: created.username,
       kind: created.kind,
@@ -175,6 +186,7 @@ export class AdminUsersService {
     } catch (e) {
       throw this.translateUnique(e);
     }
+    this.changed(id);
     await this.record(actor, 'user.updated', id, { changes: input });
     return this.get(actor, id);
   }
@@ -197,6 +209,7 @@ export class AdminUsersService {
         .set({ failedAttempts: 0, lockedUntil: null })
         .where(eq(userCredentials.userId, id));
     }
+    this.changed(id);
     await this.record(actor, 'user.status_changed', id, { from: user.status, to: status });
     return this.get(actor, id);
   }
@@ -273,24 +286,7 @@ export class AdminUsersService {
       }
     }
 
-    await this.db.transaction(async (tx) => {
-      await tx
-        .update(users)
-        .set({
-          deletedAt: new Date(),
-          status: 'disabled',
-          // Libera o login para reuso; "#" nunca é aceito num login, então não colide.
-          username: `#excluido-${id}`,
-          email: null,
-          jobTitle: null,
-          externalId: null,
-        })
-        .where(eq(users.id, id));
-      await tx.delete(roleAssignments).where(eq(roleAssignments.userId, id));
-      await tx.delete(userCredentials).where(eq(userCredentials.userId, id));
-    });
-    await this.sessions.revokeAllForUser(id, 'user_deleted');
-    await this.avatars.remove(id);
+    await this.purger.purge(id);
     await this.record(actor, 'user.deleted', id, {
       username: user.username,
       displayName: user.displayName,
@@ -307,7 +303,13 @@ export class AdminUsersService {
   async assignRole(actor: Actor, userId: string, input: AssignRoleRequest): Promise<AdminUser> {
     this.assertCanAssignRoles(actor);
     await this.loadInScope(actor, userId, 'users.read');
-    const role = ROLES[input.role];
+    const role = await this.roles.get(input.role).catch(() => {
+      throw new AppException(400, 'VALIDATION_FAILED', 'Dados inválidos', {
+        role: ['Papel não encontrado'],
+      });
+    });
+    // Quem atribui precisa ter tudo o que o papel concede.
+    this.roles.assertCanGrant(actor, rolePermissions(role));
     const unitId = role.scoped ? (input.orgUnitId ?? null) : null;
     if (role.scoped && !unitId) {
       throw new AppException(400, 'VALIDATION_FAILED', 'Dados inválidos', {
@@ -393,18 +395,19 @@ export class AdminUsersService {
   private async rolesOf(userIds: string[]): Promise<Map<string, RoleAssignment[]>> {
     if (!userIds.length) return new Map();
     const rows = await this.db
-      .select({ a: roleAssignments, unit: orgUnits })
+      .select({ a: roleAssignments, unit: orgUnits, roleName: roles.name })
       .from(roleAssignments)
+      .innerJoin(roles, eq(roles.key, roleAssignments.role))
       .leftJoin(orgUnits, eq(orgUnits.id, roleAssignments.orgUnitId))
       .where(inArray(roleAssignments.userId, userIds))
       .orderBy(desc(roleAssignments.createdAt));
     const map = new Map<string, RoleAssignment[]>();
     for (const r of rows) {
-      if (!(r.a.role in ROLES)) continue;
       const list = map.get(r.a.userId) ?? [];
       list.push({
         id: r.a.id,
-        role: r.a.role as RoleKey,
+        role: r.a.role,
+        roleName: r.roleName,
         orgUnit: unitRef(r.unit),
         createdAt: r.a.createdAt.toISOString(),
       });

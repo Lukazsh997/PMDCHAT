@@ -23,6 +23,9 @@ export type AuditAction =
   | 'user.avatar_removed'
   | 'role.assigned'
   | 'role.removed'
+  | 'role.created'
+  | 'role.updated'
+  | 'role.deleted'
   | 'org_unit.created'
   | 'org_unit.updated'
   | 'org_unit.deleted'
@@ -33,7 +36,14 @@ export type AuditAction =
   | 'message.deleted'
   | 'message.deleted_by_moderator'
   | 'file.rejected'
-  | 'broadcast.sent';
+  | 'broadcast.sent'
+  | 'ldap.settings_changed'
+  | 'ldap.mappings_changed'
+  | 'ldap.sync'
+  | 'roster.imported'
+  | 'roster.deactivated'
+  | 'roster.self_signup_changed'
+  | 'user.org_unit_chosen';
 
 export interface AuditEntry {
   action: AuditAction;

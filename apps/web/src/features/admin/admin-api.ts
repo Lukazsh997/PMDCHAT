@@ -5,10 +5,13 @@ import type {
   AssignRoleRequest,
   AuditPage,
   CreateOrgUnitRequest,
+  CreateRoleRequest,
   CreateUserRequest,
   CreateUserResponse,
   OrgUnit,
+  RoleDefinition,
   UpdateOrgUnitRequest,
+  UpdateRoleRequest,
   UpdateUserRequest,
   UserStatus,
 } from '@plataforma/contracts';
@@ -21,7 +24,38 @@ export const adminKeys = {
   user: (id: string) => ['admin', 'user', id] as const,
   audit: (q: object) => ['admin', 'audit', q] as const,
   org: ['org-units'] as const,
+  roles: ['admin', 'roles'] as const,
 };
+
+export const useRoles = () =>
+  useQuery({
+    queryKey: adminKeys.roles,
+    queryFn: () => api<RoleDefinition[]>('GET', '/admin/roles'),
+    staleTime: 30_000,
+  });
+
+export function useRoleMutations() {
+  const qc = useQueryClient();
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: adminKeys.roles });
+    void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+  };
+  return {
+    create: useMutation({
+      mutationFn: (b: CreateRoleRequest) => api<RoleDefinition>('POST', '/admin/roles', b),
+      onSuccess: refresh,
+    }),
+    update: useMutation({
+      mutationFn: (v: { key: string; body: UpdateRoleRequest }) =>
+        api<RoleDefinition>('PATCH', `/admin/roles/${v.key}`, v.body),
+      onSuccess: refresh,
+    }),
+    remove: useMutation({
+      mutationFn: (key: string) => api<void>('DELETE', `/admin/roles/${key}`),
+      onSuccess: refresh,
+    }),
+  };
+}
 
 const qs = (o: Record<string, string | number | undefined>) =>
   new URLSearchParams(
@@ -109,7 +143,10 @@ export function useUserMutations() {
     }),
     removeAvatar: useMutation({
       mutationFn: (id: string) => api<AdminUser>('DELETE', `/admin/users/${id}/avatar`),
-      onSuccess: refresh,
+      onSuccess: (u) => {
+        refresh(u);
+        void qc.invalidateQueries({ queryKey: adminKeys.roles });
+      },
     }),
     removeRole: useMutation({
       mutationFn: (v: { id: string; assignmentId: string }) =>

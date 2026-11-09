@@ -1,8 +1,9 @@
-import { LogOut, MessagesSquare, Network, Shield, UserRound, WifiOff } from 'lucide-react';
-import type { ReactNode } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router';
+import { LogOut, MessagesSquare, Network, Search, Shield, UserRound, WifiOff } from 'lucide-react';
+import { type ReactNode, useEffect } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { Avatar, ErrorBoundary } from '@/components/ui';
 import { APP_NAME } from '@/lib/config';
+import { ensurePushSubscription } from '@/lib/push';
 import { connectionStore } from '@/lib/socket';
 import { useLogout, useMe } from '../auth/auth-api';
 import { useConversations } from '../chat/chat-api';
@@ -15,10 +16,27 @@ import { useRealtimeSync } from '../chat/useRealtimeSync';
 export function AppShell() {
   const me = useMe();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  // Ctrl+K (ou ⌘K) abre a busca de qualquer tela.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        void navigate('/busca');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navigate]);
   const logout = useLogout();
   const user = me.data?.user;
   useRealtimeSync(user?.id);
-  const unread = (useConversations().data ?? []).reduce((n, c) => n + c.unreadCount, 0);
+  // Confirma a inscrição de push deste navegador (se a pessoa já permitiu avisos).
+  useEffect(() => {
+    if (user?.id) void ensurePushSubscription();
+  }, [user?.id]);
+  const conversations = useConversations().data ?? [];
+  const unread = conversations.reduce((n, c) => n + c.unreadCount, 0);
   const connection = connectionStore.use((s) => s);
   const isAdmin = me.data?.permissions.includes('admin.access');
 
@@ -40,6 +58,9 @@ export function AppShell() {
           <span className="sr-only">{APP_NAME}</span>
           <RailLink to="/" label="Conversas" badge={unread}>
             <MessagesSquare size={20} aria-hidden="true" />
+          </RailLink>
+          <RailLink to="/busca" label="Buscar (Ctrl+K)">
+            <Search size={20} aria-hidden="true" />
           </RailLink>
           {user?.kind !== 'guest' && (
             <RailLink to="/organograma" label="Organograma">

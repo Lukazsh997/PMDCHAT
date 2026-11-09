@@ -1,6 +1,6 @@
 # Plataforma de Comunicação Interna — implantação em uma VM Linux.
 # Uso: cp .env.example .env  (ajuste)  →  docker compose up -d --build
-# Somente o Nginx publica porta; banco, Valkey e API ficam na rede interna.
+# Somente o Nginx publica portas (80 e 443); banco, Valkey e API ficam na rede interna.
 
 name: plataforma
 
@@ -33,6 +33,10 @@ x-api-env: &api-env
   # Antivírus: deixe CLAMAV_HOST vazio e remova "antivirus" de COMPOSE_PROFILES para desativar.
   CLAMAV_HOST: ${CLAMAV_HOST-clamav}
   CLAMAV_REQUIRED: ${CLAMAV_REQUIRED:-true}
+  # Web Push (avisos com a aba fechada): precisa de saída para a internet (serviço do Google).
+  PUSH_ENABLED: ${PUSH_ENABLED:-true}
+  PUSH_SUBJECT: ${PUSH_SUBJECT:-mailto:suporte@plataforma.local}
+  PUSH_PROXY: ${PUSH_PROXY:-}
 
 services:
   postgres:
@@ -140,6 +144,12 @@ services:
     restart: unless-stopped
     ports:
       - '${HTTP_PORT:-80}:80'
+      - '${HTTPS_PORT:-443}:443'
+    environment:
+      HTTPS_PORT: ${HTTPS_PORT:-443}
+    # Certificado do HTTPS (infra/scripts/https.sh). Sem ele, o site fica em HTTP.
+    volumes:
+      - ./infra/nginx/certs:/etc/nginx/certs:ro
     depends_on:
       api: { condition: service_healthy }
     mem_limit: 128m

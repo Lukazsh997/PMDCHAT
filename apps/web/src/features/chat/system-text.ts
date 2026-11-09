@@ -6,6 +6,8 @@ export function systemText(e: SystemEvent, nameOf: (id: string) => string, meId:
   switch (e.event) {
     case 'group_created':
       return `${who(e.actorId)} criou o grupo`;
+    case 'channel_created':
+      return `${who(e.actorId)} criou o canal de avisos`;
     case 'members_added':
       return `${who(e.actorId)} adicionou ${listNames(e.userIds.map((u, i) => (u === meId ? 'você' : (e.names[i] ?? nameOf(u)))))}`;
     case 'member_removed':

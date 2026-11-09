@@ -1,0 +1,2 @@
+ALTER TABLE "users" ADD COLUMN "must_choose_org_unit" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "ldap_settings" ADD COLUMN "roster_self_signup" boolean DEFAULT false NOT NULL;

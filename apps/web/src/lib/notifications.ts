@@ -1,3 +1,4 @@
+import { ensurePushSubscription } from './push';
 import { createStore } from './store';
 
 /**
@@ -18,6 +19,8 @@ export const notifyStore = createStore<NotifyState>(currentState());
 export async function requestNotifications(): Promise<NotifyState> {
   if (currentState() === 'default') await Notification.requestPermission();
   notifyStore.set(currentState());
+  // Com a permissão dada, também avisa com a aba fechada (Web Push).
+  if (notifyStore.get() === 'granted') void ensurePushSubscription();
   return notifyStore.get();
 }
 
@@ -31,7 +34,7 @@ export function showNotification(opts: {
   const n = new Notification(opts.title, {
     body: opts.body,
     tag: opts.tag,
-    icon: '/favicon.svg',
+    icon: '/icons/icon-192.png',
     silent: false,
   });
   n.onclick = () => {

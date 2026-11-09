@@ -18,6 +18,10 @@ export interface DomainEventMap {
   'read.updated': { conversationId: string; userId: string; seq: number; recipientIds: string[] };
   'session.revoked': { sessionIds: string[] };
   'user.deactivated': { userId: string };
+  /** Lotação, situação ou prazo de acesso mudou: canais de unidade se ajustam. */
+  'user.membership_changed': { userId: string };
+  /** Organograma mudou (unidade movida, ativada ou desativada). */
+  'org.changed': Record<string, never>;
 }
 
 @Injectable()

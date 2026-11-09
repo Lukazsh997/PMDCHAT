@@ -6,6 +6,7 @@ import type {
   Message,
   MessagePage,
   MessagePreview,
+  NotificationLevel,
 } from '@plataforma/contracts';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
@@ -29,6 +30,8 @@ export interface ChatMessage extends Message {
 export interface MessagesState {
   items: ChatMessage[];
   hasMore: boolean;
+  /** Aberta no meio (pela busca): faltam as mais novas. */
+  hasNewer?: boolean;
 }
 
 /** Conversa aberta agora nesta aba (para não notificar nem contar como não lida). */
@@ -93,7 +96,46 @@ export function useMessages(id: string) {
     );
   }, [qc, id]);
 
-  return { ...query, loadOlder };
+  /** Mensagens mais novas, quando a conversa foi aberta no meio. */
+  const loadNewer = useCallback(async () => {
+    const state = qc.getQueryData<MessagesState>(keys.messages(id));
+    const newest = state?.items.findLast((m) => !m.status);
+    if (!state?.hasNewer || !newest) return;
+    const page = await api<MessagePage>(
+      'GET',
+      `/conversations/${id}/messages?limit=50&after=${newest.seq}`,
+    );
+    qc.setQueryData<MessagesState>(
+      keys.messages(id),
+      (s) => s && { ...s, items: merge(s.items, page.items), hasNewer: !!page.hasNewer },
+    );
+  }, [qc, id]);
+
+  /** Abre a conversa ao redor de uma mensagem (se ela ainda não estiver carregada). */
+  const jumpTo = useCallback(
+    async (seq: number) => {
+      const state = qc.getQueryData<MessagesState>(keys.messages(id));
+      if (state?.items.some((m) => m.seq === seq)) return;
+      const page = await api<MessagePage>(
+        'GET',
+        `/conversations/${id}/messages?limit=50&around=${seq}`,
+      );
+      qc.setQueryData<MessagesState>(keys.messages(id), {
+        items: page.items,
+        hasMore: page.hasMore,
+        hasNewer: !!page.hasNewer,
+      });
+    },
+    [qc, id],
+  );
+
+  /** Volta para as mais recentes (depois de ter aberto no meio). */
+  const jumpToLatest = useCallback(
+    () => qc.resetQueries({ queryKey: keys.messages(id), exact: true }),
+    [qc, id],
+  );
+
+  return { ...query, loadOlder, loadNewer, jumpTo, jumpToLatest };
 }
 
 /** Une listas de mensagens sem duplicar (por id ou clientId), ordenadas por sequência. */
@@ -120,11 +162,50 @@ export function merge(a: ChatMessage[], b: ChatMessage[]): ChatMessage[] {
   );
 }
 
+/** Coloca (ou atualiza) a mensagem na linha do tempo da conversa. */
 export function upsertMessage(qc: QueryClient, m: ChatMessage): void {
+  qc.setQueryData<MessagesState>(keys.messages(m.conversationId), (s) => {
+    if (!s) return s;
+    // Aberta no meio: mensagens novas chegam quando a pessoa voltar ao fim.
+    const isNew = !s.items.some((x) => x.id === m.id || (x.clientId && x.clientId === m.clientId));
+    if (s.hasNewer && isNew) return s;
+    return { ...s, items: merge(s.items, [m]) };
+  });
+}
+
+/** Retira uma mensagem otimista (antes de colocar a versão do servidor ou ao reenviar). */
+export function dropLocal(qc: QueryClient, m: ChatMessage): void {
   qc.setQueryData<MessagesState>(
     keys.messages(m.conversationId),
-    (s) => s && { ...s, items: merge(s.items, [m]) },
+    (s) => s && { ...s, items: s.items.filter((x) => x.id !== m.id) },
   );
+}
+
+/**
+ * Coloca, troca ou tira a minha reação (uma por mensagem); a tela muda na hora e o
+ * servidor confirma.
+ */
+export function useReact(meId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { message: ChatMessage; emoji: string; on: boolean }) =>
+      api<Message>(v.on ? 'PUT' : 'DELETE', `/messages/${v.message.id}/reactions`, {
+        emoji: v.emoji,
+      }),
+    onMutate: ({ message, emoji, on }) => {
+      // Tira a minha reação anterior (seja qual for) e, se for o caso, põe a nova.
+      const reactions = message.reactions
+        .map((r) => ({ ...r, userIds: r.userIds.filter((u) => u !== meId) }))
+        .map((r) => (on && r.emoji === emoji ? { ...r, userIds: [...r.userIds, meId] } : r))
+        .filter((r) => r.userIds.length);
+      if (on && !reactions.some((r) => r.emoji === emoji))
+        reactions.push({ emoji, userIds: [meId] });
+      upsertMessage(qc, { ...message, reactions });
+      return { message };
+    },
+    onError: (_e, _v, c) => c && upsertMessage(qc, c.message),
+    onSuccess: (m) => upsertMessage(qc, m),
+  });
 }
 
 /** Atualiza a lista de conversas quando chega uma mensagem (sem nova consulta ao servidor). */
@@ -189,6 +270,7 @@ export function useSendMessage(conversationId: string, meId: string) {
         editedAt: null,
         deletedAt: null,
         broadcast: null,
+        reactions: [],
         status: 'sending',
         pendingAttachmentIds: attachments.map((a) => a.id),
       };
@@ -199,29 +281,12 @@ export function useSendMessage(conversationId: string, meId: string) {
           body,
           attachmentIds: attachments.map((a) => a.id),
         });
-        qc.setQueryData<MessagesState>(
-          keys.messages(conversationId),
-          (s) =>
-            s && {
-              ...s,
-              items: merge(
-                s.items.filter((x) => x.id !== optimistic.id),
-                [saved],
-              ),
-            },
-        );
+        dropLocal(qc, optimistic);
+        upsertMessage(qc, saved);
         applyToList(qc, saved, meId, previewOf(saved, null));
       } catch {
-        qc.setQueryData<MessagesState>(
-          keys.messages(conversationId),
-          (s) =>
-            s && {
-              ...s,
-              items: s.items.map((x) =>
-                x.id === optimistic.id ? { ...x, status: 'failed' as const } : x,
-              ),
-            },
-        );
+        dropLocal(qc, optimistic);
+        upsertMessage(qc, { ...optimistic, status: 'failed' });
       }
     },
     [qc, conversationId, meId],
@@ -328,6 +393,14 @@ export function useGroupActions(id: string) {
     mute: useMutation({
       mutationFn: (mutedUntil: string | null) =>
         api<ConversationSummary>('PATCH', `/conversations/${id}/me`, { mutedUntil }),
+      onSuccess: (c) => {
+        upsertSummary(qc, c);
+        void qc.invalidateQueries({ queryKey: keys.detail(id) });
+      },
+    }),
+    level: useMutation({
+      mutationFn: (notificationLevel: NotificationLevel | null) =>
+        api<ConversationSummary>('PATCH', `/conversations/${id}/me`, { notificationLevel }),
       onSuccess: (c) => {
         upsertSummary(qc, c);
         void qc.invalidateQueries({ queryKey: keys.detail(id) });

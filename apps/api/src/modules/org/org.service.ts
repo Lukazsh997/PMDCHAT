@@ -8,12 +8,16 @@ import type {
 import { and, asc, count, eq, isNull, like, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { AppException } from '../../common/app-exception.js';
+import { DomainEvents } from '../../common/events/domain-events.js';
 import { DB, type Database } from '../../database/database.js';
 import { orgUnits, type OrgUnitRow, users } from '../../database/schema/index.js';
 
 @Injectable()
 export class OrgService {
-  constructor(@Inject(DB) private readonly db: Database) {}
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly events: DomainEvents,
+  ) {}
 
   /** Árvore completa em ordem de exibição (pais antes dos filhos). */
   async list(): Promise<OrgUnit[]> {
@@ -76,7 +80,7 @@ export class OrgService {
 
   async update(id: string, input: UpdateOrgUnitRequest): Promise<OrgUnitRow> {
     const current = await this.get(id);
-    return this.db.transaction(async (tx) => {
+    const row = await this.db.transaction(async (tx) => {
       let path = current.path;
       let depth = current.depth;
 
@@ -119,6 +123,11 @@ export class OrgService {
         throw this.translate(e);
       }
     });
+    // Mover ou (des)ativar muda quem está abaixo de cada unidade: canais se ajustam.
+    if (input.parentId !== undefined || input.isActive !== undefined) {
+      this.events.emit('org.changed', {});
+    }
+    return row;
   }
 
   async remove(id: string): Promise<OrgUnitRow> {

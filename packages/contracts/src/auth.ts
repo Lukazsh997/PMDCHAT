@@ -29,8 +29,18 @@ export const passwordSchema = z
   )
   .refine((v) => /[a-zA-Z]/.test(v) && /\d/.test(v), 'A senha deve conter letras e números');
 
+/**
+ * Aceita o login como o Windows mostra: "ORGAO\\joao" e "joao@orgao.local" viram "joao".
+ */
+export const loginUsernameSchema = z.preprocess((v) => {
+  if (typeof v !== 'string') return v;
+  const t = v.trim();
+  const afterSlash = t.includes('\\') ? t.slice(t.lastIndexOf('\\') + 1) : t;
+  return afterSlash.includes('@') ? afterSlash.slice(0, afterSlash.indexOf('@')) : afterSlash;
+}, usernameSchema);
+
 export const loginRequestSchema = z.object({
-  username: usernameSchema,
+  username: loginUsernameSchema,
   // No login não aplicamos a política completa: senhas antigas continuam válidas.
   password: z.string().min(1, 'Informe a senha').max(PASSWORD_POLICY.maxLength),
 });

@@ -36,6 +36,11 @@ export async function createApp(opts: { logger?: boolean } = {}): Promise<NestFa
       (req.headers['x-request-id'] as string | undefined) ?? randomUUID(),
     bodyLimit: 1024 * 1024,
   });
+  // A lista de lotação vem inteira no corpo do pedido (até ~8 MB de texto); o resto
+  // da API continua limitada a 1 MB.
+  adapter.getInstance().addHook('onRoute', (route) => {
+    if (route.url.startsWith(`${API_PREFIX}/admin/roster`)) route.bodyLimit = 12 * 1024 * 1024;
+  });
 
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {
     logger:

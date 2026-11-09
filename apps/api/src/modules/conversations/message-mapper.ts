@@ -1,11 +1,14 @@
-import type { Attachment, BroadcastRef, Message } from '@plataforma/contracts';
+import type { Attachment, BroadcastRef, Message, Reaction } from '@plataforma/contracts';
 import type { MessageRow } from '../../database/schema/index.js';
 
 /** Converte a linha do banco no formato enviado ao cliente; apagadas não expõem conteúdo. */
 export function toMessage(
   row: MessageRow,
-  attachments: Attachment[] = [],
-  broadcast: BroadcastRef | null = null,
+  extra: {
+    attachments?: Attachment[];
+    broadcast?: BroadcastRef | null;
+    reactions?: Reaction[];
+  } = {},
 ): Message {
   const deleted = !!row.deletedAt;
   return {
@@ -16,11 +19,12 @@ export function toMessage(
     type: row.type,
     body: deleted ? '' : row.body,
     system: row.system ?? null,
-    attachments: deleted ? [] : attachments,
+    attachments: deleted ? [] : (extra.attachments ?? []),
     clientId: row.clientId,
     createdAt: row.createdAt.toISOString(),
     editedAt: row.editedAt?.toISOString() ?? null,
     deletedAt: row.deletedAt?.toISOString() ?? null,
-    broadcast,
+    broadcast: extra.broadcast ?? null,
+    reactions: deleted ? [] : (extra.reactions ?? []),
   };
 }

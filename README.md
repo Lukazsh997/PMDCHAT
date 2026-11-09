@@ -6,26 +6,42 @@ pelo Google Chrome e depende só de software livre.
 
 ## O que já está pronto
 
-**Fase 1 — Chat** (esta versão)
+**Fase 2 — Produtividade** (esta versão)
 
-| Área         | Entregue                                                                                                                                                                                            |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Conversas    | Diretas e em grupo, em tempo real (Socket.IO + Valkey), não lidas, confirmação de leitura, "digitando…", presença (disponível, ausente, desconectado), rascunho por conversa                        |
-| Mensagens    | Envio que não duplica em quedas de rede, só o autor edita ou apaga, até 10 min após o envio (prazo pelo relógio do servidor); histórico de edições guardado; apagadas somem em definitivo após 48 h |
-| Anexos       | Até 50 MB, arrastar e soltar ou colar imagem, bloqueio de executáveis pelo nome e pelo conteúdo, antivírus ClamAV, imagens sem metadados (EXIF/GPS) e com miniatura                                 |
-| Grupos       | Dono e administradores, adicionar e remover pessoas (quem entra não vê o histórico anterior), sair do grupo, silenciar                                                                              |
-| Notificações | Notificação do Chrome com a aba em segundo plano, contador no título e no ícone da aba                                                                                                              |
-| Organograma  | Aba para todos com a árvore (órgão › secretarias › subsecretarias › setores) e as pessoas de cada unidade, quantas estão online e busca por setor ou pessoa                                         |
-| Comunicados  | Botão "Comunicado" na lista de conversas: pessoas e setores na mesma busca, entregue em conversa particular a cada um; setores exigem o papel Comunicador                                           |
-| Perfil       | Foto de perfil (recortada e sem metadados no servidor)                                                                                                                                              |
-| Permissões   | Papéis com escopo: super administrador, administrador de unidade (vale para a unidade e as de baixo), comunicador e auditor                                                                         |
-| Painel       | Usuários (criar, editar, bloquear, excluir, senha temporária, convidados com prazo), papéis, organograma, auditoria com filtros, indicadores                                                        |
-| Segurança    | Verificação em duas etapas (TOTP) obrigatória para quem acessa o painel; sessões no servidor; proteção CSRF; auditoria                                                                              |
+| Área                | Entregue                                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Busca               | Mensagens em português sem acento e por pedaço de palavra, com filtros (conversa, pessoa, período, anexo), pessoas e arquivos; abre a conversa na mensagem (Ctrl+K) |
+| Reações             | 8 emojis, uma reação por pessoa em cada mensagem, em tempo real                                                                                                     |
+| Canais de aviso     | Só administradores publicam; ligados a uma unidade, as pessoas lotadas entram e saem sozinhas                                                                       |
+| Papéis e permissões | Papéis editáveis no painel (criar, ajustar permissões, onde valem), com proteção contra escalada de privilégio                                                      |
+| Avisos e aplicativo | Web Push com a aba fechada, nível de aviso por conversa (todas ou nenhuma) e instalação como aplicativo (PWA)                                                       |
+
+**Fase 1 — Chat**
+
+| Área             | Entregue                                                                                                                                                                                            |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Conversas        | Diretas e em grupo, em tempo real (Socket.IO + Valkey), não lidas, confirmação de leitura, "digitando…", presença (disponível, ausente, desconectado), rascunho por conversa                        |
+| Mensagens        | Envio que não duplica em quedas de rede, só o autor edita ou apaga, até 10 min após o envio (prazo pelo relógio do servidor); histórico de edições guardado; apagadas somem em definitivo após 48 h |
+| Anexos           | Até 50 MB, arrastar e soltar ou colar imagem, bloqueio de executáveis pelo nome e pelo conteúdo, antivírus ClamAV, imagens sem metadados (EXIF/GPS) e com miniatura                                 |
+| Grupos           | Dono e administradores, adicionar e remover pessoas (quem entra não vê o histórico anterior), sair do grupo, silenciar                                                                              |
+| Notificações     | Notificação do Chrome com a aba em segundo plano, contador no título e no ícone da aba                                                                                                              |
+| Organograma      | Aba para todos com a árvore (órgão › secretarias › subsecretarias › setores) e as pessoas de cada unidade, quantas estão online e busca por setor ou pessoa                                         |
+| Comunicados      | Botão "Comunicado" na lista de conversas: pessoas e setores na mesma busca, entregue em conversa particular a cada um; setores exigem o papel Comunicador                                           |
+| Perfil           | Foto de perfil (recortada e sem metadados no servidor)                                                                                                                                              |
+| Active Directory | Login com a senha da rede; sincronização de pessoas, OUs → unidades e grupos → papéis, com prévia e trava contra desativações em massa                                                              |
+| Permissões       | Papéis com escopo: super administrador, administrador de unidade (vale para a unidade e as de baixo), comunicador e auditor                                                                         |
+| Painel           | Usuários (criar, editar, bloquear, excluir, senha temporária, convidados com prazo), papéis, organograma, auditoria com filtros, indicadores                                                        |
+| Segurança        | Verificação em duas etapas (TOTP) obrigatória para quem acessa o painel; sessões no servidor; proteção CSRF; auditoria                                                                              |
 
 **Fase 0 — Fundação:** monorepo, autenticação local, Docker Compose, Nginx, scripts de operação e CI.
 
-Próximas fases: busca completa, menções, respostas em thread e reações (Fase 2); integração com o
-Active Directory (Fase 3); cliente para Windows com notificações nativas (Fase 4).
+**Fase 3 — Active Directory:** login com a senha do AD (LDAPS/StartTLS), criação da conta no
+primeiro login, sincronização agendada (nome, e-mail, cargo, lotação pela OU, papéis por grupo,
+desativação de quem sai do AD) e painel de configuração. Importação da lista de lotação (secretarias, setores e pessoas, a partir
+de uma exportação .sql ou .csv; ver [ADR 0019](docs/adr/0019-lista-de-lotacao.md)). Ver
+[ADR 0018](docs/adr/0018-active-directory.md) e [implantação](docs/implantacao.md#active-directory).
+
+Próxima fase: cliente para Windows com notificações nativas (Fase 4).
 
 ## Estrutura
 
@@ -55,6 +71,7 @@ Guia completo em [docs/implantacao.md](docs/implantacao.md).
 ```bash
 git clone https://github.com/Lukazsh997/PMDCHAT.git /opt/plataforma && cd /opt/plataforma
 infra/scripts/install.sh      # gera o .env, constrói as imagens e sobe tudo
+infra/scripts/https.sh interna  # HTTPS sem custo (depois: AC nas estações por GPO)
 ```
 
 Atualizar uma instalação existente:
@@ -69,6 +86,7 @@ git pull && infra/scripts/update.sh   # backup + variáveis novas + imagens + mi
 | Senha temporária              | `docker compose run --rm api cli reset-password <usuário>` |
 | Celular perdido (duas etapas) | `docker compose run --rm api cli reset-mfa <usuário>`      |
 | Logs da API                   | `docker compose logs -f api`                               |
+| Certificado do HTTPS          | `infra/scripts/https.sh status`                            |
 
 ## Desenvolvimento local
 
@@ -101,7 +119,7 @@ login, anexos e o antivírus através do Nginx.
 1. [Monólito modular](docs/adr/0001-monolito-modular.md)
 2. [TypeScript de ponta a ponta com NestJS e ES modules](docs/adr/0002-typescript-nestjs.md)
 3. [Sessões no servidor em vez de JWT](docs/adr/0003-sessoes-no-servidor.md)
-4. [HTTP sem certificado nesta fase](docs/adr/0004-http-nesta-fase.md)
+4. [HTTP sem certificado nesta fase](docs/adr/0004-http-nesta-fase.md) (substituída pela 20)
 5. [Valkey em vez de Redis](docs/adr/0005-valkey.md)
 6. [Organograma com caminho materializado](docs/adr/0006-organograma-caminho-materializado.md)
 7. [Envio por REST, entrega por tempo real](docs/adr/0007-envio-rest-entrega-tempo-real.md)
@@ -110,3 +128,11 @@ login, anexos e o antivírus através do Nginx.
 10. [Anexos em disco com antivírus](docs/adr/0010-anexos-e-antivirus.md)
 11. [Comunicados em massa como mensagens diretas](docs/adr/0011-comunicados-em-massa.md)
 12. [Exclusão de usuários com anonimização](docs/adr/0012-exclusao-de-usuarios.md)
+13. [Busca no PostgreSQL, sem serviço extra](docs/adr/0013-busca-postgresql.md)
+14. [Reações (threads e menções retiradas)](docs/adr/0014-threads-mencoes-reacoes.md)
+15. [Canais de aviso com membros pela lotação](docs/adr/0015-canais-de-aviso.md)
+16. [Papéis editáveis no banco](docs/adr/0016-papeis-editaveis.md)
+17. [Web Push e PWA](docs/adr/0017-web-push-pwa.md)
+18. [Integração com o Active Directory](docs/adr/0018-active-directory.md)
+19. [Lista de lotação importada](docs/adr/0019-lista-de-lotacao.md)
+20. [HTTPS sem custo (AC interna ou AD CS)](docs/adr/0020-https-sem-custo.md)

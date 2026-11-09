@@ -30,12 +30,21 @@ export const users = pgTable(
     authSource: authSource().notNull().default('local'),
     /** objectGUID do Active Directory (fase 3). */
     externalId: varchar({ length: 128 }),
+    /** DN da conta no AD, na última sincronização. */
+    ldapDn: text(),
+    /**
+     * A sincronização desativou a conta (desativada ou apagada no AD). Só nesse caso a
+     * sincronização reativa sozinha: bloqueio feito no painel não é desfeito pelo AD.
+     */
+    ldapDisabledAt: timestamp({ withTimezone: true }),
     kind: userKind().notNull().default('member'),
     /** Lotação principal. */
     orgUnitId: uuid().references(() => orgUnits.id, { onDelete: 'set null' }),
     /** Convidados: data em que o acesso expira. */
     accessExpiresAt: timestamp({ withTimezone: true }),
     mustChangePassword: boolean().notNull().default(false),
+    /** Conta do AD fora da lista: deve escolher o setor no 1º acesso (Fase 3). */
+    mustChooseOrgUnit: boolean().notNull().default(false),
     lastLoginAt: timestamp({ withTimezone: true }),
     /** Foto de perfil: caminho relativo em FILES_DIR (avatars/…). */
     avatarKey: varchar({ length: 255 }),

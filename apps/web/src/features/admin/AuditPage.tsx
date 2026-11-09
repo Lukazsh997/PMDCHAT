@@ -23,6 +23,9 @@ const ACTIONS: Record<string, string> = {
   'user.avatar_removed': 'Removeu foto de perfil',
   'role.assigned': 'Atribuiu papel',
   'role.removed': 'Removeu papel',
+  'role.created': 'Criou papel',
+  'role.updated': 'Alterou papel',
+  'role.deleted': 'Excluiu papel',
   'org_unit.created': 'Criou unidade',
   'org_unit.updated': 'Alterou unidade',
   'org_unit.deleted': 'Excluiu unidade',
@@ -34,6 +37,13 @@ const ACTIONS: Record<string, string> = {
   'message.deleted_by_moderator': 'Apagou mensagem de outra pessoa',
   'file.rejected': 'Arquivo barrado pelo antivírus',
   'broadcast.sent': 'Enviou comunicado em massa',
+  'ldap.settings_changed': 'Alterou a conexão com o AD',
+  'ldap.mappings_changed': 'Alterou o mapeamento do AD',
+  'ldap.sync': 'Sincronizou com o AD',
+  'roster.imported': 'Importou a lista de lotação',
+  'roster.deactivated': 'Desligou a lista de lotação',
+  'roster.self_signup_changed': 'Alterou a entrada de quem está fora da lista',
+  'user.org_unit_chosen': 'Escolheu o setor no 1º acesso',
 };
 
 const GROUPS = [

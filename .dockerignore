@@ -10,3 +10,4 @@
 data
 backups
 docs
+infra/nginx/certs

@@ -13,6 +13,9 @@ import {
 import {
   type ChangePasswordRequest,
   changePasswordRequestSchema,
+  type ChooseOrgUnitRequest,
+  chooseOrgUnitSchema,
+  type OrgUnit,
   disableMfaSchema,
   enableMfaSchema,
   type LoginMfaChallenge,
@@ -28,6 +31,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AppException } from '../../common/app-exception.js';
 import {
+  AllowPendingOrgUnit,
   AllowPendingPasswordChange,
   clientInfo,
   CurrentAuth,
@@ -35,6 +39,7 @@ import {
 } from '../../common/request-context.js';
 import { ZodPipe } from '../../common/zod.pipe.js';
 import { APP_CONFIG, type AppConfig } from '../../config/config.js';
+import { OrgService } from '../org/index.js';
 import { PermissionService, requestGrants } from '../rbac/index.js';
 import { UsersService } from '../users/index.js';
 import { authenticate } from './auth.guard.js';
@@ -52,6 +57,7 @@ export class AuthController {
     private readonly sessions: SessionService,
     private readonly users: UsersService,
     private readonly permissions: PermissionService,
+    private readonly org: OrgService,
   ) {}
 
   @Public()
@@ -84,6 +90,7 @@ export class AuthController {
   }
 
   @AllowPendingPasswordChange()
+  @AllowPendingOrgUnit()
   @Post('logout')
   @HttpCode(204)
   async logout(
@@ -96,6 +103,7 @@ export class AuthController {
   }
 
   @AllowPendingPasswordChange()
+  @AllowPendingOrgUnit()
   @Get('me')
   getMe(@CurrentAuth() auth: AuthContext, @Req() req: FastifyRequest): Promise<MeResponse> {
     return this.me(auth, req);
@@ -110,6 +118,26 @@ export class AuthController {
     @Req() req: FastifyRequest,
   ): Promise<void> {
     await this.auth.changePassword(auth, body, clientInfo(req));
+  }
+
+  /** Primeiro acesso (fora da lista): setores disponíveis para escolher. */
+  @AllowPendingOrgUnit()
+  @Get('onboarding/org-units')
+  async onboardingUnits(): Promise<OrgUnit[]> {
+    const units = await this.org.list();
+    return units.filter((u) => u.isActive);
+  }
+
+  /** Primeiro acesso (fora da lista): grava o setor escolhido e libera o acesso. */
+  @AllowPendingOrgUnit()
+  @Post('onboarding/org-unit')
+  @HttpCode(204)
+  async chooseOrgUnit(
+    @CurrentAuth() auth: AuthContext,
+    @Body(new ZodPipe(chooseOrgUnitSchema)) body: ChooseOrgUnitRequest,
+    @Req() req: FastifyRequest,
+  ): Promise<void> {
+    await this.auth.chooseOrgUnit(auth, body.orgUnitId, clientInfo(req));
   }
 
   @Post('mfa/setup')

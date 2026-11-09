@@ -1,17 +1,11 @@
-import {
-  type AdminUser,
-  type OrgUnit,
-  ROLE_KEYS,
-  ROLES,
-  type RoleKey,
-} from '@plataforma/contracts';
+import { type AdminUser, type OrgUnit } from '@plataforma/contracts';
 import { Copy, ImageOff, KeyRound, ShieldOff, Trash2, UserX } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Alert, Avatar, Button, Dialog, Select, Spinner, TextField, toast } from '@/components/ui';
 import { ApiRequestError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { useMe } from '../auth/auth-api';
-import { useAdminUser, useUserMutations } from './admin-api';
+import { useAdminUser, useRoles, useUserMutations } from './admin-api';
 import { copyText } from './copy';
 import { OrgUnitSelect } from './OrgUnitSelect';
 import { RoleBadges, StatusLabel } from './UsersPage';
@@ -297,7 +291,9 @@ function UserDetail({
     accessExpiresAt: dateInput(u.accessExpiresAt),
   }));
   const [temp, setTemp] = useState<string | null>(null);
-  const [newRole, setNewRole] = useState<RoleKey>('unit_admin');
+  const roleList = useRoles().data ?? [];
+  const [newRole, setNewRole] = useState('unit_admin');
+  const chosen = roleList.find((r) => r.key === newRole);
   const [roleUnit, setRoleUnit] = useState('');
   const canManage = me.permissions.includes('users.manage');
   const canAssign = me.permissions.includes('roles.assign');
@@ -461,7 +457,7 @@ function UserDetail({
                 {u.roles.map((r) => (
                   <li key={r.id} className="flex items-center gap-3 px-3 py-2 text-sm">
                     <span className="flex-1">
-                      <span className="font-semibold">{ROLES[r.role].name}</span>
+                      <span className="font-semibold">{r.roleName}</span>
                       {r.orgUnit && (
                         <span className="text-muted"> em {r.orgUnit.name} e unidades abaixo</span>
                       )}
@@ -471,7 +467,7 @@ function UserDetail({
                       onClick={() =>
                         m.removeRole.mutate({ id: u.id, assignmentId: r.id }, { onError: fail })
                       }
-                      aria-label={`Remover papel ${ROLES[r.role].name}`}
+                      aria-label={`Remover papel ${r.roleName}`}
                     >
                       <Trash2 size={15} aria-hidden="true" />
                     </Button>
@@ -484,16 +480,16 @@ function UserDetail({
                 <Select
                   label="Novo papel"
                   value={newRole}
-                  onChange={(e) => setNewRole(e.target.value as RoleKey)}
+                  onChange={(e) => setNewRole(e.target.value)}
                 >
-                  {ROLE_KEYS.map((k) => (
-                    <option key={k} value={k}>
-                      {ROLES[k].name}
+                  {roleList.map((r) => (
+                    <option key={r.key} value={r.key}>
+                      {r.name}
                     </option>
                   ))}
                 </Select>
               </div>
-              {ROLES[newRole].scoped && (
+              {chosen?.scoped && (
                 <div className="w-64">
                   <OrgUnitSelect
                     label="Na unidade"
@@ -517,7 +513,9 @@ function UserDetail({
                 Atribuir
               </Button>
             </div>
-            <p className="mt-2 text-xs text-muted">{ROLES[newRole].description}.</p>
+            {chosen?.description && (
+              <p className="mt-2 text-xs text-muted">{chosen.description}.</p>
+            )}
           </>
         )}
       </section>

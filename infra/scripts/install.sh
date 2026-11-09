@@ -67,3 +67,6 @@ if ! docker compose up -d --build --wait --wait-timeout 600; then
   exit 1
 fi
 echo "Plataforma no ar: ${origins%%,*}"
+if [[ ! -s infra/nginx/certs/server.crt ]]; then
+  echo "Para ligar o HTTPS (sem custo): infra/scripts/https.sh interna — ver docs/implantacao.md."
+fi

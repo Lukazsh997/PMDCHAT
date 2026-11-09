@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { usernameSchema } from './auth.js';
-import { type Permission, ROLE_KEYS, type RoleKey } from './rbac.js';
+import type { Permission, RoleKey } from './rbac.js';
 
 export const userStatusSchema = z.enum(['active', 'blocked', 'disabled']);
 export type UserStatus = z.infer<typeof userStatusSchema>;
@@ -30,6 +30,8 @@ export interface PublicUser {
   authSource: AuthSource;
   orgUnit: OrgUnitRef | null;
   mustChangePassword: boolean;
+  /** Conta do AD fora da lista: precisa escolher o setor no 1º acesso. */
+  mustChooseOrgUnit: boolean;
   mfaEnabled: boolean;
   /** Endereço da foto de perfil (muda quando a foto é trocada), ou null. */
   avatarUrl: string | null;
@@ -92,6 +94,7 @@ export const setUserStatusSchema = z.object({ status: userStatusSchema });
 export interface RoleAssignment {
   id: string;
   role: RoleKey;
+  roleName: string;
   orgUnit: OrgUnitRef | null;
   createdAt: string;
 }
@@ -115,7 +118,7 @@ export interface CreateUserResponse {
 }
 
 export const assignRoleSchema = z.object({
-  role: z.enum(ROLE_KEYS as [RoleKey, ...RoleKey[]]),
+  role: z.string().trim().min(1).max(32),
   orgUnitId: z.uuid().nullable().optional(),
 });
 export type AssignRoleRequest = z.infer<typeof assignRoleSchema>;
@@ -151,3 +154,7 @@ export interface AdminStats {
   messagesLast24h: number;
   onlineNow: number;
 }
+
+/** Primeiro acesso de quem entrou pelo AD sem estar na lista: escolhe a lotação. */
+export const chooseOrgUnitSchema = z.object({ orgUnitId: z.uuid() });
+export type ChooseOrgUnitRequest = z.infer<typeof chooseOrgUnitSchema>;

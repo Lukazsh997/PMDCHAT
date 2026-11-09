@@ -1,8 +1,23 @@
-import type { ConversationDetail, DirectoryUser } from '@plataforma/contracts';
+import {
+  type ConversationDetail,
+  type DirectoryUser,
+  NOTIFICATION_LEVELS,
+  type NotificationLevel,
+} from '@plataforma/contracts';
 import { Bell, BellOff, LogOut, MoreHorizontal, Pencil, UserPlus, X } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Alert, Avatar, Button, Dialog, IconButton, Menu, TextField, toast } from '@/components/ui';
+import {
+  Alert,
+  Avatar,
+  Button,
+  Dialog,
+  IconButton,
+  Menu,
+  Select,
+  TextField,
+  toast,
+} from '@/components/ui';
 import { isMuted, useGroupActions } from './chat-api';
 import { usePresence, useWatchPresence } from './live-stores';
 import { PersonPicker } from './PersonPicker';
@@ -37,14 +52,22 @@ export function ConversationInfo({
   return (
     <aside className="flex h-full w-full flex-col border-l border-line bg-surface lg:w-80">
       <header className="flex items-center gap-2 border-b border-line px-4 py-3">
-        <h2 className="flex-1 font-bold">{isGroup ? 'Dados do grupo' : 'Dados do contato'}</h2>
+        <h2 className="flex-1 font-bold">
+          {detail.channel ? 'Dados do canal' : isGroup ? 'Dados do grupo' : 'Dados do contato'}
+        </h2>
         <IconButton label="Fechar painel" onClick={onClose}>
           <X size={18} aria-hidden="true" />
         </IconButton>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="flex flex-col items-center px-4 py-6 text-center">
-          <Avatar name={detail.title} size={80} group={isGroup} src={detail.peer?.avatarUrl} />
+          <Avatar
+            name={detail.title}
+            size={80}
+            group={isGroup}
+            channel={!!detail.channel}
+            src={detail.peer?.avatarUrl}
+          />
           <p className="mt-3 text-lg font-bold">{detail.title}</p>
           {detail.peer ? (
             <p className="text-sm text-muted">
@@ -55,6 +78,20 @@ export function ConversationInfo({
             <p className="text-sm text-muted">{detail.memberCount} participantes</p>
           )}
           {detail.description && <p className="mt-2 text-sm">{detail.description}</p>}
+          {detail.channel && (
+            <p className="mt-3 rounded-[var(--radius-control)] bg-primary-soft px-3 py-2 text-xs">
+              Canal de avisos: só os administradores publicam.
+              {detail.channel.orgUnit && (
+                <>
+                  {' '}
+                  Todas as pessoas lotadas em{' '}
+                  <strong>{detail.channel.orgUnit.acronym || detail.channel.orgUnit.name}</strong>
+                  {detail.channel.includeSubunits ? ' e nas unidades abaixo' : ''} entram e saem
+                  sozinhas.
+                </>
+              )}
+            </p>
+          )}
           {isGroup && amAdmin && (
             <Button variant="ghost" className="mt-2" onClick={() => setRenaming(true)}>
               <Pencil size={15} aria-hidden="true" /> Editar nome e descrição
@@ -62,7 +99,7 @@ export function ConversationInfo({
           )}
         </section>
 
-        <section className="border-t border-line px-4 py-3">
+        <section className="flex flex-col gap-3 border-t border-line px-4 py-3">
           {muted ? (
             <Button variant="ghost" className="-ml-3" onClick={() => mute(null)}>
               <Bell size={16} aria-hidden="true" /> Reativar notificações
@@ -83,6 +120,27 @@ export function ConversationInfo({
               )}
             />
           )}
+          <Select
+            label="Avisos desta conversa"
+            value={detail.notificationSetting ?? ''}
+            onChange={(e) =>
+              actions.level.mutate((e.target.value || null) as NotificationLevel | null, {
+                onError: (err) => toast(err.message, 'error'),
+              })
+            }
+            hint={
+              detail.notificationSetting
+                ? undefined
+                : `Padrão: ${NOTIFICATION_LEVELS[detail.notificationLevel].toLowerCase()}.`
+            }
+          >
+            <option value="">Padrão</option>
+            {(Object.keys(NOTIFICATION_LEVELS) as NotificationLevel[]).map((k) => (
+              <option key={k} value={k}>
+                {NOTIFICATION_LEVELS[k]}
+              </option>
+            ))}
+          </Select>
         </section>
 
         {isGroup && (
@@ -112,6 +170,7 @@ export function ConversationInfo({
                       (detail.myRole === 'owner' || m.role === 'member')
                     }
                     canPromote={amAdmin}
+                    removable={!m.autoJoined}
                     onRemove={() =>
                       actions.remove.mutate(m.id, { onError: (e) => toast(e.message, 'error') })
                     }
@@ -127,10 +186,11 @@ export function ConversationInfo({
           </section>
         )}
 
-        {isGroup && (
+        {isGroup && !detail.members.find((m) => m.id === meId)?.autoJoined && (
           <section className="border-t border-line px-4 py-3">
             <Button variant="danger" onClick={() => setConfirmLeave(true)}>
-              <LogOut size={16} aria-hidden="true" /> Sair do grupo
+              <LogOut size={16} aria-hidden="true" />{' '}
+              {detail.channel ? 'Sair do canal' : 'Sair do grupo'}
             </Button>
           </section>
         )}
@@ -187,6 +247,7 @@ function Member({
   isMe,
   canManage,
   canPromote,
+  removable,
   onRemove,
   onRole,
 }: {
@@ -194,6 +255,8 @@ function Member({
   isMe: boolean;
   canManage: boolean;
   canPromote: boolean;
+  /** Membro automático do canal (pela lotação) não pode ser removido à mão. */
+  removable: boolean;
   onRemove: () => void;
   onRole: (r: 'admin' | 'member') => void;
 }) {
@@ -215,6 +278,7 @@ function Member({
         </p>
         <p className="truncate text-xs text-muted">
           {member.orgUnit?.acronym ?? member.orgUnit?.name ?? member.jobTitle ?? ''}
+          {member.autoJoined && ' · pela lotação'}
         </p>
       </div>
       {ROLE_LABEL[member.role] && (
@@ -230,7 +294,7 @@ function Member({
             ...(member.role === 'admin'
               ? [{ label: 'Remover de administrador', onSelect: () => onRole('member') }]
               : []),
-            { label: 'Remover do grupo', danger: true, onSelect: onRemove },
+            ...(removable ? [{ label: 'Remover', danger: true, onSelect: onRemove }] : []),
           ]}
           trigger={(p) => (
             <IconButton label={`Opções para ${member.displayName}`} className="h-8 w-8" {...p}>

@@ -1,26 +1,28 @@
-import { ArrowLeft, Info, Upload } from 'lucide-react';
+import { ArrowLeft, Info, Megaphone, Upload } from 'lucide-react';
 import { MESSAGE_RULES } from '@plataforma/contracts';
 import { serverNow } from '@/lib/server-clock';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { Alert, Avatar, Button, Dialog, IconButton, Spinner, toast } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMe } from '../auth/auth-api';
 import {
   activeConversation,
   type ChatMessage,
+  dropLocal,
   markRead,
   useConversationDetail,
   useConversations,
   useDeleteMessage,
   useEditMessage,
   useMessages,
+  useReact,
   useSendMessage,
 } from './chat-api';
 import { Composer, type ComposerHandle } from './Composer';
 import { ConversationInfo } from './GroupInfoPanel';
 import { usePresence, useTyping, useWatchPresence } from './live-stores';
-import { MessageList } from './MessageList';
+import { type MessageActions, MessageList } from './MessageList';
 
 const PRESENCE_TEXT = { online: 'disponível', away: 'ausente', offline: 'desconectado' } as const;
 
@@ -37,6 +39,25 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ChatMessage | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  const react = useReact(meId);
+  const [params, setParams] = useSearchParams();
+  // Mensagem a mostrar (?m=id&s=seq), vinda da busca.
+  const focusId = params.get('m');
+  const focusSeq = Number(params.get('s')) || null;
+  const { jumpTo } = messages;
+  useEffect(() => {
+    if (focusSeq) void jumpTo(focusSeq).catch(() => undefined);
+  }, [focusSeq, jumpTo]);
+  const clearFocus = () =>
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        next.delete('m');
+        next.delete('s');
+        return next;
+      },
+      { replace: true },
+    );
   const [dragging, setDragging] = useState(false);
   const composer = useRef<ComposerHandle>(null);
 
@@ -59,6 +80,21 @@ export function ConversationView({ conversationId }: { conversationId: string })
     if (lastSeq && document.visibilityState === 'visible') markRead(qc, conversationId, lastSeq);
   }, [qc, conversationId, lastSeq]);
 
+  const channel = d?.channel ?? summary?.channel ?? null;
+  const myRole = d?.myRole ?? summary?.myRole;
+  // Canal de avisos: só administradores do canal publicam.
+  const canPost = !channel || (myRole !== undefined && myRole !== 'member');
+  const actions: MessageActions = {
+    onEdit: setEditing,
+    onDelete: setConfirmDelete,
+    onRetry: (m) => {
+      dropLocal(qc, m);
+      void send(m.body, m.attachments, m.clientId ?? undefined);
+    },
+    onReact: (message, emoji, on) =>
+      react.mutate({ message, emoji, on }, { onError: (e) => toast(e.message, 'error') }),
+  };
+
   const title = d?.title ?? summary?.title ?? '';
   const typingNames = typing.map(
     (u) => d?.members.find((m) => m.id === u)?.displayName.split(' ')[0] ?? 'Alguém',
@@ -69,9 +105,13 @@ export function ConversationView({ conversationId }: { conversationId: string })
       ? 'Conta excluída'
       : peer
         ? PRESENCE_TEXT[presence ?? 'offline']
-        : d
-          ? d.members.map((m) => (m.id === meId ? 'Você' : m.displayName.split(' ')[0])).join(', ')
-          : '';
+        : channel
+          ? `Canal de avisos · ${d?.memberCount ?? summary?.memberCount ?? 0} pessoas`
+          : d
+            ? d.members
+                .map((m) => (m.id === meId ? 'Você' : m.displayName.split(' ')[0]))
+                .join(', ')
+            : '';
 
   if (detail.isError) {
     return (
@@ -125,6 +165,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
               size={38}
               src={peer?.avatarUrl}
               group={d?.type === 'group'}
+              channel={!!channel}
               presence={peer ? (presence ?? 'offline') : undefined}
             />
             <span className="min-w-0">
@@ -153,24 +194,24 @@ export function ConversationView({ conversationId }: { conversationId: string })
           <MessageList
             items={items}
             hasMore={messages.data?.hasMore ?? false}
+            hasNewer={messages.data?.hasNewer ?? false}
             loadOlder={messages.loadOlder}
+            loadNewer={messages.loadNewer}
+            onJumpLatest={() => void messages.jumpToLatest()}
+            focusId={focusId}
+            onFocused={clearFocus}
             detail={d}
             meId={meId}
-            actions={{
-              onEdit: setEditing,
-              onDelete: setConfirmDelete,
-              onRetry: (m) => {
-                qc.setQueryData<{ items: ChatMessage[] }>(
-                  ['messages', conversationId],
-                  (s) => s && { ...s, items: s.items.filter((x) => x.id !== m.id) },
-                );
-                void send(m.body, m.attachments, m.clientId ?? undefined);
-              },
-            }}
+            actions={actions}
           />
         )}
 
-        {peer?.removed ? (
+        {!canPost ? (
+          <p className="flex items-center justify-center gap-2 border-t border-line bg-surface px-4 py-3 text-center text-sm text-muted">
+            <Megaphone size={16} aria-hidden="true" /> Canal de avisos: só os administradores
+            publicam aqui. Você pode reagir às mensagens.
+          </p>
+        ) : peer?.removed ? (
           <p className="border-t border-line bg-surface px-4 py-3 text-center text-sm text-muted">
             Esta pessoa foi excluída do sistema. O histórico continua disponível para consulta.
           </p>
@@ -197,7 +238,11 @@ export function ConversationView({ conversationId }: { conversationId: string })
                 .catch((e: Error) => toast(e.message, 'error'));
               setEditing(null);
             }}
-            onSend={(body, attachments) => void send(body, attachments)}
+            onSend={async (body, attachments) => {
+              // Lendo no meio da conversa: volta ao fim para ver a própria mensagem.
+              if (messages.data?.hasNewer) await messages.jumpToLatest();
+              void send(body, attachments);
+            }}
           />
         )}
 

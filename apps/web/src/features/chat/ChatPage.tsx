@@ -6,13 +6,14 @@ import { BroadcastComposer } from './BroadcastComposer';
 import { ConversationList } from './ConversationList';
 import { ConversationView } from './ConversationView';
 import { NewChatDialog, NewGroupDialog } from './NewConversationDialogs';
+import { NewChannelDialog } from './NewChannelDialog';
 import { NotificationBanner } from './NotificationBanner';
 
 /** Lista de conversas à esquerda e a conversa aberta à direita (no celular, uma de cada vez). */
 export function ChatPage() {
   const me = useMe().data!;
   const { conversationId } = useParams();
-  const [dialog, setDialog] = useState<'chat' | 'group' | 'broadcast' | null>(null);
+  const [dialog, setDialog] = useState<'chat' | 'group' | 'broadcast' | 'channel' | null>(null);
   const canCreate = me.user.kind !== 'guest';
 
   return (
@@ -27,6 +28,11 @@ export function ChatPage() {
           onNewChat={() => setDialog('chat')}
           onNewGroup={() => setDialog('group')}
           onBroadcast={() => setDialog('broadcast')}
+          onNewChannel={
+            me.permissions.includes('conversations.create_channel')
+              ? () => setDialog('channel')
+              : undefined
+          }
         />
       </aside>
       <main className={`relative min-w-0 flex-1 ${conversationId ? 'flex' : 'hidden md:flex'}`}>
@@ -53,6 +59,7 @@ export function ChatPage() {
       <NewChatDialog open={dialog === 'chat'} onClose={() => setDialog(null)} />
       <NewGroupDialog open={dialog === 'group'} onClose={() => setDialog(null)} />
       <BroadcastComposer open={dialog === 'broadcast'} onClose={() => setDialog(null)} />
+      <NewChannelDialog open={dialog === 'channel'} onClose={() => setDialog(null)} />
     </div>
   );
 }

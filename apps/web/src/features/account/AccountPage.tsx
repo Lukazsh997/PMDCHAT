@@ -4,6 +4,7 @@ import { Alert, Button, Spinner } from '@/components/ui';
 import { describeUserAgent, formatDateTime } from '@/lib/format';
 import { useMe, useRevokeSession, useSessions } from '../auth/auth-api';
 import { ChangePasswordForm } from '../auth/ChangePasswordForm';
+import { AppSection } from './AppSection';
 import { AvatarEditor } from './AvatarEditor';
 import { MfaSection } from './MfaSection';
 
@@ -26,6 +27,13 @@ export function AccountPage() {
         description="Aparece para as outras pessoas nas conversas e no organograma. JPG, PNG ou WebP de até 5 MB."
       >
         <AvatarEditor user={user} />
+      </Section>
+
+      <Section
+        title="Notificações e aplicativo"
+        description="Como o sistema avisa você quando chega mensagem."
+      >
+        <AppSection />
       </Section>
 
       {user.authSource === 'local' && (

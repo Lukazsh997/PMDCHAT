@@ -7,6 +7,12 @@ describe('contratos de autenticação', () => {
     expect(r.username).toBe('maria.silva');
   });
 
+  it('aceita o login no formato do Windows (DOMINIO\\usuario e usuario@dominio)', () => {
+    for (const u of ['ORGAO\\Joao.Silva', 'joao.silva@orgao.local', ' Joao.Silva ']) {
+      expect(loginRequestSchema.parse({ username: u, password: 'x' }).username).toBe('joao.silva');
+    }
+  });
+
   it('rejeita caracteres inválidos no usuário', () => {
     expect(loginRequestSchema.safeParse({ username: 'maria silva', password: 'x' }).success).toBe(
       false,

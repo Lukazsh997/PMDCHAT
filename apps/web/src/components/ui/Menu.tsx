@@ -22,6 +22,7 @@ export function Menu({
   items,
   align = 'right',
   label,
+  layout = 'list',
 }: {
   trigger: (props: {
     onClick: (e: React.MouseEvent<HTMLElement>) => void;
@@ -31,6 +32,8 @@ export function Menu({
   items: MenuItem[];
   align?: 'left' | 'right';
   label: string;
+  /** `row`: itens lado a lado, só o ícone/rótulo curto (ex.: escolher um emoji). */
+  layout?: 'list' | 'row';
 }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
@@ -88,14 +91,16 @@ export function Menu({
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Tab') return setOpen(false);
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const next = layout === 'row' ? 'ArrowRight' : 'ArrowDown';
+    const prev = layout === 'row' ? 'ArrowLeft' : 'ArrowUp';
+    if (e.key !== next && e.key !== prev) return;
     e.preventDefault();
     const els = [
       ...(panel.current?.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not(:disabled)') ??
         []),
     ];
     const i = els.indexOf(document.activeElement as HTMLButtonElement);
-    els.at((i + (e.key === 'ArrowDown' ? 1 : -1)) % els.length)?.focus();
+    els.at((i + (e.key === next ? 1 : -1)) % els.length)?.focus();
   }
 
   return (
@@ -119,7 +124,9 @@ export function Menu({
             aria-label={label}
             onKeyDown={onKeyDown}
             style={pos ?? { top: 0, left: 0, visibility: 'hidden' }}
-            className="fixed z-50 min-w-48 rounded-[var(--radius-control)] border border-line bg-surface py-1 shadow-lg"
+            className={`fixed z-50 rounded-[var(--radius-control)] border border-line bg-surface shadow-lg ${
+              layout === 'row' ? 'flex gap-0.5 p-1' : 'min-w-48 py-1'
+            }`}
           >
             {items.map((it) => (
               <button
@@ -131,7 +138,11 @@ export function Menu({
                   setOpen(false);
                   it.onSelect();
                 }}
-                className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-line/50 focus-visible:bg-line/50 focus-visible:outline-none disabled:opacity-50 ${it.danger ? 'text-danger' : 'text-ink'}`}
+                className={
+                  layout === 'row'
+                    ? 'flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] text-xl hover:bg-line/50 focus-visible:bg-line/50 focus-visible:outline-none'
+                    : `flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-line/50 focus-visible:bg-line/50 focus-visible:outline-none disabled:opacity-50 ${it.danger ? 'text-danger' : 'text-ink'}`
+                }
               >
                 {it.icon}
                 {it.label}
