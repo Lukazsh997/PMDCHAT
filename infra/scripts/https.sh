@@ -165,7 +165,15 @@ cmd_interna() {
   mapfile -t names < <(printf '%s\n' "${names[@]}" | awk 'NF && !seen[$0]++')
   ((${#names[@]})) || die "nenhum endereço em APP_ORIGINS. Informe os nomes/IPs: https.sh interna chat.orgao.local 192.168.0.10"
   echo "Endereços do certificado: ${names[*]}"
-  if [[ ! -s "$CA_DIR/ca.key" ]]; then create_ca "${names[@]}"; else echo "Usando a AC interna existente."; fi
+  # Só reusa a AC se ela estiver completa (chave + certificado). Chave sem certificado é
+  # uma AC pela metade de uma tentativa interrompida — nunca foi distribuída, então refaz.
+  if [[ -s "$CA_DIR/ca.key" && -s "$CA_DIR/ca.crt" ]]; then
+    echo "Usando a AC interna existente."
+  else
+    [[ -s "$CA_DIR/ca.key" ]] && echo "AC interna incompleta (sem certificado); gerando de novo."
+    rm -f "$CA_DIR/ca.key" "$CA_DIR/ca.crt" "$CA_DIR/ca.srl"
+    create_ca "${names[@]}"
+  fi
   issue_server "${names[@]}"
   enable_env
   restart
