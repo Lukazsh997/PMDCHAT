@@ -125,6 +125,16 @@ export interface RosterApplyResult {
 export interface RosterStatus {
   /** A lotação vem da lista (e ela diz quem pode ter conta pelo AD). */
   active: boolean;
+  /**
+   * Pessoas do AD fora da lista podem entrar e escolher o setor no 1º acesso.
+   * Com isto ligado, a lista deixa de ser uma barreira: define a lotação de quem está
+   * nela, mas não impede os demais de entrar.
+   */
+  selfSignup: boolean;
   entries: number;
   lastImport: { fileName: string; at: string; actorName: string | null } | null;
 }
+
+/** Liga/desliga o autosserviço de setor para quem está fora da lista. */
+export const rosterSelfSignupSchema = z.object({ enabled: z.boolean() });
+export type RosterSelfSignupRequest = z.infer<typeof rosterSelfSignupSchema>;

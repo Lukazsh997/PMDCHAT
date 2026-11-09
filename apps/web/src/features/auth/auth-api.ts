@@ -4,6 +4,7 @@ import type {
   LoginRequest,
   MeResponse,
   MfaSetupResponse,
+  OrgUnit,
   SessionInfo,
 } from '@plataforma/contracts';
 import { dropPushSubscription } from '@/lib/push';
@@ -108,5 +109,21 @@ export function useRevokeSession() {
   return useMutation({
     mutationFn: (id: string) => api<void>('DELETE', `/auth/sessions/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: sessionsKey }),
+  });
+}
+
+export function useOnboardingOrgUnits() {
+  return useQuery({
+    queryKey: ['auth', 'onboarding', 'org-units'],
+    queryFn: () => api<OrgUnit[]>('GET', '/auth/onboarding/org-units'),
+  });
+}
+
+export function useChooseOrgUnit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orgUnitId: string) =>
+      api<void>('POST', '/auth/onboarding/org-unit', { orgUnitId }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['auth'] }),
   });
 }

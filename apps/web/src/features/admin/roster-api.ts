@@ -36,5 +36,10 @@ export function useRosterMutations() {
       mutationFn: () => api<RosterStatus>('POST', '/admin/roster/deactivate'),
       onSuccess: refresh,
     }),
+    selfSignup: useMutation({
+      mutationFn: (enabled: boolean) =>
+        api<RosterStatus>('POST', '/admin/roster/self-signup', { enabled }),
+      onSuccess: refresh,
+    }),
   };
 }

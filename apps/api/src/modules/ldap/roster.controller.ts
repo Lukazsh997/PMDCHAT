@@ -5,6 +5,7 @@ import {
   type RosterPlan,
   rosterPlanSchema,
   type RosterStatus,
+  rosterSelfSignupSchema,
 } from '@plataforma/contracts';
 import type { FastifyRequest } from 'fastify';
 import type { z } from 'zod';
@@ -47,5 +48,15 @@ export class RosterController {
   @HttpCode(200)
   deactivate(@Req() req: FastifyRequest): Promise<RosterStatus> {
     return this.roster.deactivate(req.auth!.user.id);
+  }
+
+  /** Liga/desliga a entrada com escolha de setor para quem está fora da lista. */
+  @Post('self-signup')
+  @HttpCode(200)
+  selfSignup(
+    @Body(new ZodPipe(rosterSelfSignupSchema)) body: z.output<typeof rosterSelfSignupSchema>,
+    @Req() req: FastifyRequest,
+  ): Promise<RosterStatus> {
+    return this.roster.setSelfSignup(body.enabled, req.auth!.user.id);
   }
 }

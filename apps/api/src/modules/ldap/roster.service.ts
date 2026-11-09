@@ -92,6 +92,7 @@ export class RosterService {
       .limit(1);
     return {
       active: row.orgUnitSource === 'roster',
+      selfSignup: row.rosterSelfSignup,
       entries: n?.n ?? 0,
       lastImport: last
         ? {
@@ -114,6 +115,22 @@ export class RosterService {
       action: 'roster.deactivated',
       actorId,
       entityType: 'roster',
+    });
+    return this.status();
+  }
+
+  /** Liga/desliga o autosserviço de setor para quem está fora da lista. */
+  async setSelfSignup(enabled: boolean, actorId: string): Promise<RosterStatus> {
+    await this.settings.row();
+    await this.db
+      .update(ldapSettings)
+      .set({ rosterSelfSignup: enabled, updatedBy: actorId })
+      .where(eq(ldapSettings.id, 1));
+    await this.audit.record({
+      action: 'roster.self_signup_changed',
+      actorId,
+      entityType: 'roster',
+      metadata: { enabled },
     });
     return this.status();
   }

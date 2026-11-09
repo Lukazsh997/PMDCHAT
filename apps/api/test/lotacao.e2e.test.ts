@@ -65,6 +65,25 @@ const preview = (cookie: string, body: Record<string, unknown> = {}) =>
     cookie,
     body: { fileName: 'usuarios.sql', content: FILE, ...body },
   });
+const ldapBody = () => ({
+  enabled: true,
+  url: ad.url,
+  startTls: false,
+  tlsVerify: true,
+  caCert: '',
+  bindDn: SERVICE_DN,
+  bindPassword: SERVICE_PASSWORD,
+  baseDn: BASE,
+  userFilter: '(&(objectCategory=person)(objectClass=user))',
+  usernameAttribute: 'sAMAccountName',
+  displayNameAttribute: 'displayName',
+  emailAttribute: 'mail',
+  jobTitleAttribute: 'title',
+  defaultOrgUnitId: null,
+  autoProvision: true,
+  syncIntervalMinutes: 60,
+});
+
 const apply = (cookie: string, body: Record<string, unknown> = {}) =>
   call(ctx, 'POST', '/admin/roster/apply', {
     cookie,
@@ -242,6 +261,107 @@ describe('Lista de lotação', () => {
     // Voltar a usar as OUs: a lista deixa de valer.
     await call(ctx, 'POST', '/admin/roster/deactivate', { cookie });
     expect((await login(ctx, '999999', 'senhaDoAd2026')).length).toBeGreaterThan(0);
+  });
+
+  it('autosserviço: quem está fora da lista entra e escolhe o setor no 1º acesso', async () => {
+    const { cookie } = await admin();
+    await call(ctx, 'PUT', '/admin/ldap/settings', { cookie, body: ldapBody() });
+    await apply(cookie);
+    const on = await call(ctx, 'POST', '/admin/roster/self-signup', {
+      cookie,
+      body: { enabled: true },
+    });
+    expect(on.body).toMatchObject({ active: true, selfSignup: true });
+
+    // Pessoa que não está no arquivo entra pelo AD.
+    ad.add({ username: '777777', displayName: 'Novo Servidor', ou: 'OU=USUARIOS,OU=SMF' });
+    const session = await login(ctx, '777777', 'senhaDoAd2026');
+
+    const me1 = await call(ctx, 'GET', '/auth/me', { cookie: session });
+    expect(me1.body!.user).toMatchObject({ mustChooseOrgUnit: true, orgUnit: null });
+
+    // Enquanto não escolhe, as demais rotas ficam bloqueadas.
+    const blocked = await call(ctx, 'GET', '/auth/sessions', { cookie: session });
+    expect(blocked.status).toBe(403);
+    expect(blocked.body!.code).toBe('ORG_UNIT_REQUIRED');
+
+    const units = await call(ctx, 'GET', '/auth/onboarding/org-units', { cookie: session });
+    expect(units.status).toBe(200);
+    const tesouraria = units.body!.find((u: any) => u.name === 'TESOURARIA');
+    expect(tesouraria).toBeTruthy();
+
+    const chosen = await call(ctx, 'POST', '/auth/onboarding/org-unit', {
+      cookie: session,
+      body: { orgUnitId: tesouraria.id },
+    });
+    expect(chosen.status).toBe(204);
+
+    const me2 = await call(ctx, 'GET', '/auth/me', { cookie: session });
+    expect(me2.body!.user).toMatchObject({ mustChooseOrgUnit: false });
+    expect(me2.body!.user.orgUnit.id).toBe(tesouraria.id);
+    expect(await byName('777777')).toMatchObject({
+      authSource: 'ldap',
+      orgUnitId: tesouraria.id,
+      mustChooseOrgUnit: false,
+    });
+
+    // Já liberado: a rota antes bloqueada agora responde.
+    expect((await call(ctx, 'GET', '/auth/sessions', { cookie: session })).status).toBe(200);
+    // Escolher de novo não é permitido (a lotação já foi definida).
+    expect(
+      (
+        await call(ctx, 'POST', '/auth/onboarding/org-unit', {
+          cookie: session,
+          body: { orgUnitId: tesouraria.id },
+        })
+      ).status,
+    ).toBe(409);
+  });
+
+  it('autosserviço desligado: quem está fora da lista continua barrado', async () => {
+    const { cookie } = await admin();
+    await call(ctx, 'PUT', '/admin/ldap/settings', { cookie, body: ldapBody() });
+    await apply(cookie);
+    ad.add({ username: '777777', displayName: 'Novo', ou: 'OU=USUARIOS,OU=SMF' });
+    const r = await call(ctx, 'POST', '/auth/login', {
+      body: { username: '777777', password: 'senhaDoAd2026' },
+    });
+    expect(r.status).toBe(403);
+    expect(r.body!.message).toContain('ainda não foi liberada');
+    expect(await byName('777777')).toBeUndefined();
+  });
+
+  it('autosserviço: a sincronização não desativa quem se cadastrou nem cria os demais em massa', async () => {
+    const { cookie } = await admin();
+    await call(ctx, 'PUT', '/admin/ldap/settings', { cookie, body: ldapBody() });
+    await apply(cookie);
+    await call(ctx, 'POST', '/admin/roster/self-signup', { cookie, body: { enabled: true } });
+
+    ad.add({ username: '777777', displayName: 'Novo Servidor', ou: 'OU=USUARIOS,OU=SMF' });
+    const session = await login(ctx, '777777', 'senhaDoAd2026');
+    const units = await call(ctx, 'GET', '/auth/onboarding/org-units', { cookie: session });
+    const tesouraria = units.body!.find((u: any) => u.name === 'TESOURARIA');
+    await call(ctx, 'POST', '/auth/onboarding/org-unit', {
+      cookie: session,
+      body: { orgUnitId: tesouraria.id },
+    });
+
+    // Outras pessoas do AD fora da lista, que nunca entraram.
+    ad.add(
+      { username: '888801', displayName: 'Fora Um', ou: 'OU=USUARIOS,OU=SMF' },
+      { username: '888802', displayName: 'Fora Dois', ou: 'OU=USUARIOS,OU=SMF' },
+    );
+    const run = await call(ctx, 'POST', '/admin/ldap/sync', {
+      cookie,
+      body: { confirmLargeChanges: false },
+    });
+    // A sincronização não cria em massa quem está fora (só conta como "fora da lista").
+    expect(run.body!.summary.created).toBe(0);
+    expect(run.body!.summary.outsideRoster).toBeGreaterThanOrEqual(2);
+    expect(await byName('888801')).toBeUndefined();
+    // Quem se cadastrou continua ativo e com o setor escolhido.
+    expect((await byName('777777'))!.status).toBe('active');
+    expect((await byName('777777'))!.orgUnitId).toBe(tesouraria.id);
   });
 
   it('arquivo que não dá para ler: mensagem clara', async () => {

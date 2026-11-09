@@ -24,6 +24,12 @@ código do setor são usados — senhas, fotos e as demais colunas são descarta
   pelo AD e ficou fora é excluído (ou só desativado, à escolha de quem importa). Contas locais e o
   super administrador nunca são removidos.
 - **Trava:** remover mais de 30% das contas do AD (e mais de 5) exige confirmação explícita.
+- **Autosserviço (opcional):** quando ligado (`ldap_settings.roster_self_signup`), a lista deixa de
+  ser uma barreira: quem está no AD mas fora da lista entra mesmo assim e, no 1º acesso, escolhe o
+  próprio setor numa tela (`users.must_choose_org_unit`). A autenticação continua no AD; a pessoa
+  não ganha papéis por isso e um administrador pode corrigir a lotação depois. Uma importação
+  futura que inclua essa pessoa passa a mandar na lotação dela. Desligado (padrão), quem está fora
+  da lista é barrado.
 - **Volta atrás:** "Voltar a usar as OUs do AD" desliga a lista (ela fica guardada).
 
 **Consequências.** A lista precisa ser reimportada quando o outro sistema mudar (pessoas novas só

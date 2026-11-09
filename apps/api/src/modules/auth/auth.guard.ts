@@ -2,7 +2,11 @@ import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@ne
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
 import { AppException } from '../../common/app-exception.js';
-import { ALLOW_PENDING_PASSWORD, IS_PUBLIC } from '../../common/request-context.js';
+import {
+  ALLOW_PENDING_ORG_UNIT,
+  ALLOW_PENDING_PASSWORD,
+  IS_PUBLIC,
+} from '../../common/request-context.js';
 import { APP_CONFIG, type AppConfig } from '../../config/config.js';
 import { isUsable, UsersService } from '../users/index.js';
 import { SessionService } from './session.service.js';
@@ -34,6 +38,12 @@ export class AuthGuard implements CanActivate {
       !this.reflector.getAllAndOverride<boolean>(ALLOW_PENDING_PASSWORD, targets)
     ) {
       throw new AppException(403, 'PASSWORD_CHANGE_REQUIRED', 'Troque sua senha para continuar.');
+    }
+    if (
+      req.auth.user.mustChooseOrgUnit &&
+      !this.reflector.getAllAndOverride<boolean>(ALLOW_PENDING_ORG_UNIT, targets)
+    ) {
+      throw new AppException(403, 'ORG_UNIT_REQUIRED', 'Escolha o seu setor para continuar.');
     }
     return true;
   }

@@ -99,6 +99,13 @@
       "when": 1793977783489,
       "tag": "0013_fase3_lista_de_lotacao",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794183658206,
+      "tag": "0014_fase3_primeiro_acesso_setor",
+      "breakpoints": true
     }
   ]
 }

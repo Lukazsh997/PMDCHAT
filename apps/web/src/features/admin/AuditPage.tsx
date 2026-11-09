@@ -42,6 +42,8 @@ const ACTIONS: Record<string, string> = {
   'ldap.sync': 'Sincronizou com o AD',
   'roster.imported': 'Importou a lista de lotação',
   'roster.deactivated': 'Desligou a lista de lotação',
+  'roster.self_signup_changed': 'Alterou a entrada de quem está fora da lista',
+  'user.org_unit_chosen': 'Escolheu o setor no 1º acesso',
 };
 
 const GROUPS = [

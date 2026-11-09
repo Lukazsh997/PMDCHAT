@@ -93,6 +93,7 @@ export class RealtimeService implements BeforeApplicationShutdown {
         const token = readCookie(socket.handshake.headers.cookie, this.config.SESSION_COOKIE_NAME);
         const auth = await authenticate(token, this.sessions, this.users);
         if (auth.user.mustChangePassword) throw new Error('troca de senha pendente');
+        if (auth.user.mustChooseOrgUnit) throw new Error('escolha de setor pendente');
         socket.data = {
           userId: auth.user.id,
           sessionId: auth.session.id,

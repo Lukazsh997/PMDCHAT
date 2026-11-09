@@ -1,6 +1,8 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { ChangePasswordRequest, LoginRequest, SessionDevice } from '@plataforma/contracts';
 import { AppException } from '../../common/app-exception.js';
+import type { DomainEvents } from '../../common/events/domain-events.js';
+import { DOMAIN_EVENTS } from '../../common/events/tokens.js';
 import { APP_CONFIG, type AppConfig } from '../../config/config.js';
 import type { UserRow } from '../../database/schema/index.js';
 import { AuditService } from '../audit/index.js';
@@ -43,7 +45,33 @@ export class AuthService {
     private readonly audit: AuditService,
     /** Active Directory (Fase 3); ausente nos testes que não o usam. */
     @Optional() @Inject(EXTERNAL_AUTH) private readonly external?: ExternalAuthenticator,
+    @Optional() @Inject(DOMAIN_EVENTS) private readonly events?: DomainEvents,
   ) {}
+
+  /**
+   * Primeiro acesso de quem entrou pelo AD sem estar na lista: grava o setor escolhido,
+   * libera o acesso e avisa o tempo real (para entrar no canal da unidade).
+   */
+  async chooseOrgUnit(
+    auth: AuthContext,
+    orgUnitId: string,
+    meta: Omit<ClientMeta, 'deviceType'>,
+  ): Promise<void> {
+    if (!auth.user.mustChooseOrgUnit) {
+      throw new AppException(409, 'CONFLICT', 'A lotação já foi definida.');
+    }
+    await this.users.chooseOrgUnit(auth.user.id, orgUnitId);
+    this.events?.emit('user.membership_changed', { userId: auth.user.id });
+    await this.audit.record({
+      action: 'user.org_unit_chosen',
+      actorId: auth.user.id,
+      entityType: 'user',
+      entityId: auth.user.id,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+      metadata: { orgUnitId, via: 'self' },
+    });
+  }
 
   async login(input: LoginRequest, meta: ClientMeta): Promise<LoginResult> {
     let found = await this.users.findForLogin(input.username);

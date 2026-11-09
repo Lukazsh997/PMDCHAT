@@ -41,7 +41,9 @@ export type AuditAction =
   | 'ldap.mappings_changed'
   | 'ldap.sync'
   | 'roster.imported'
-  | 'roster.deactivated';
+  | 'roster.deactivated'
+  | 'roster.self_signup_changed'
+  | 'user.org_unit_chosen';
 
 export interface AuditEntry {
   action: AuditAction;

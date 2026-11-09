@@ -43,6 +43,8 @@ export const users = pgTable(
     /** Convidados: data em que o acesso expira. */
     accessExpiresAt: timestamp({ withTimezone: true }),
     mustChangePassword: boolean().notNull().default(false),
+    /** Conta do AD fora da lista: deve escolher o setor no 1º acesso (Fase 3). */
+    mustChooseOrgUnit: boolean().notNull().default(false),
     lastLoginAt: timestamp({ withTimezone: true }),
     /** Foto de perfil: caminho relativo em FILES_DIR (avatars/…). */
     avatarKey: varchar({ length: 255 }),

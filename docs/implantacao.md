@@ -141,6 +141,11 @@ OUs do AD), importe a lista em **Administração → Lotação**. Aceita a expor
 | Setor                                   | `setor`, `departamento`, `lotacao`          |
 | Código do setor (opcional, recomendado) | `setor_id`, `id_setor`, `cod_setor`         |
 
+Pessoas que **não** entrarem na lista podem, opcionalmente, entrar mesmo assim e escolher o setor
+no primeiro acesso: na tela **Lotação**, marque _"Deixar quem está fora da lista entrar e escolher
+o setor no 1º acesso"_. A autenticação continua sendo a do AD; a lista segue definindo a lotação de
+quem está nela. Sem essa opção, só entra quem está na lista.
+
 Exporte só essas colunas: o resto (senhas, fotos, CPF…) é ignorado, mas não precisa sair do
 sistema de origem. A prévia mostra o que muda e nada é gravado antes de confirmar. Depois da
 importação, **só tem conta pelo AD quem está na lista**; reimporte quando houver mudanças.

@@ -41,6 +41,11 @@ export const ldapSettings = pgTable('ldap_settings', {
    * Com 'roster', a lista também diz quem pode ter conta: quem não está nela não entra.
    */
   orgUnitSource: varchar({ length: 16 }).notNull().default('ad'),
+  /**
+   * Com a lista ativa, pessoas do AD fora dela podem entrar e escolher o setor no 1º
+   * acesso (em vez de serem barradas). A lista continua definindo quem está nela.
+   */
+  rosterSelfSignup: boolean().notNull().default(false),
   updatedBy: uuid().references(() => users.id, { onDelete: 'set null' }),
   updatedAt: updatedAt(),
 });

@@ -222,6 +222,8 @@ export class LdapSyncService {
             ).map((r) => [r.username, r.orgUnitId]),
           )
         : null;
+    // Com a lista ativa, permite quem está fora dela entrar e escolher o setor no 1º acesso.
+    const selfSignup = !!roster && row.rosterSelfSignup;
 
     // Candidatos no sistema: contas já ligadas ao AD e contas locais com o mesmo login.
     const usernames = people.map((p) => p.username);
@@ -307,8 +309,11 @@ export class LdapSyncService {
       if (existing) seen.add(existing.id);
 
       const outside = !!roster && !roster.has(p.username);
-      if (outside && (!existing || existing.authSource !== 'ldap')) {
-        // Fora da lista: não ganha conta (e uma conta local com o mesmo login fica como está).
+      // Autosserviço: conta nova, no login (nunca na sincronização em massa), para quem está
+      // fora da lista. Entra sem setor e escolhe no 1º acesso.
+      const selfSignupNew = outside && selfSignup && !complete && !existing && !p.disabled;
+      if (outside && !selfSignupNew && (!existing || existing.authSource !== 'ldap')) {
+        // Fora da lista e sem autosserviço: não ganha conta (conta local de mesmo login fica).
         if (!existing) summary.outsideRoster = (summary.outsideRoster ?? 0) + 1;
         continue;
       }
@@ -354,7 +359,8 @@ export class LdapSyncService {
       ];
 
       if (!existing) {
-        if (p.disabled || !row.autoProvision) continue;
+        if (p.disabled) continue;
+        if (!selfSignupNew && !row.autoProvision) continue;
         summary.created++;
         if (rolesAdd.length) summary.roleChanges += rolesAdd.length;
         const change: LdapChange = {
@@ -362,7 +368,11 @@ export class LdapSyncService {
           username: want.username,
           displayName: want.displayName,
           details: [
-            want.orgUnitId ? `lotação: ${unitName.get(want.orgUnitId) ?? '?'}` : 'sem lotação',
+            selfSignupNew
+              ? 'escolherá o setor no 1º acesso'
+              : want.orgUnitId
+                ? `lotação: ${unitName.get(want.orgUnitId) ?? '?'}`
+                : 'sem lotação',
             ...roleDetails,
           ],
         };
@@ -370,7 +380,7 @@ export class LdapSyncService {
         planned.push({
           person: p,
           existing: null,
-          set: { ...want },
+          set: selfSignupNew ? { ...want, orgUnitId: null, mustChooseOrgUnit: true } : { ...want },
           disable: false,
           reenable: false,
           rolesAdd,
@@ -402,9 +412,13 @@ export class LdapSyncService {
       }
       if (existing.ldapDn !== p.dn) set.ldapDn = p.dn;
 
-      const disable = (p.disabled || outside) && existing.status === 'active';
+      // Fora da lista só desativa quando o autosserviço está desligado (lista = barreira).
+      const disable = (p.disabled || (outside && !selfSignup)) && existing.status === 'active';
       const reenable =
-        !p.disabled && !outside && existing.status === 'disabled' && !!existing.ldapDisabledAt;
+        !p.disabled &&
+        !(outside && !selfSignup) &&
+        existing.status === 'disabled' &&
+        !!existing.ldapDisabledAt;
       if (disable) {
         set.status = 'disabled';
         set.ldapDisabledAt = new Date();
@@ -500,6 +514,7 @@ export class LdapSyncService {
             email: p.set.email ?? null,
             jobTitle: p.set.jobTitle ?? null,
             orgUnitId: p.set.orgUnitId ?? null,
+            mustChooseOrgUnit: p.set.mustChooseOrgUnit ?? false,
             authSource: 'ldap',
             externalId: p.person.guid,
             ldapDn: p.person.dn,

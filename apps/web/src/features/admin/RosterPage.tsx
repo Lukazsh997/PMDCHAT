@@ -30,7 +30,7 @@ const EMPTY: Decisions = { secretarias: {}, setores: {}, removal: 'delete' };
 export function RosterPage() {
   const status = useRosterStatus();
   const units = useOrgUnits();
-  const { preview, apply, deactivate } = useRosterMutations();
+  const { preview, apply, deactivate, selfSignup } = useRosterMutations();
   const [file, setFile] = useState<{ name: string; content: string } | null>(null);
   const [decisions, setDecisions] = useState<Decisions>(EMPTY);
   const [confirmLarge, setConfirmLarge] = useState(false);
@@ -87,7 +87,7 @@ export function RosterPage() {
           Importe a lista de quem trabalha em cada setor (exportação de outro sistema em .sql, ou
           planilha .csv com login, nome, secretaria e setor). O sistema monta as secretarias e os
           setores no organograma e lota as pessoas. Com o Active Directory, só tem conta quem está
-          na lista: quem é do AD e ficou de fora sai do sistema.
+          na lista — a menos que você ligue o acesso com escolha de setor (abaixo).
         </p>
       </div>
 
@@ -128,6 +128,37 @@ export function RosterPage() {
             </Button>
           )}
         </div>
+      )}
+
+      {status.data?.active && (
+        <label className="flex items-start gap-3 rounded-[var(--radius-panel)] border border-line bg-surface px-5 py-4">
+          <input
+            type="checkbox"
+            className="mt-1 size-4 accent-[var(--color-primary)]"
+            checked={status.data.selfSignup}
+            disabled={selfSignup.isPending}
+            onChange={(e) =>
+              selfSignup.mutate(e.target.checked, {
+                onSuccess: (s) =>
+                  toast(
+                    s.selfSignup
+                      ? 'Pessoas fora da lista agora entram e escolhem o setor.'
+                      : 'Somente quem está na lista entra pelo AD.',
+                  ),
+              })
+            }
+          />
+          <span>
+            <span className="block text-sm font-semibold">
+              Deixar quem está fora da lista entrar e escolher o setor no 1º acesso
+            </span>
+            <span className="block text-xs text-muted">
+              A autenticação continua sendo a do Active Directory. Quem não está na lista entra
+              normalmente e escolhe o próprio setor ao acessar pela primeira vez; a lista segue
+              definindo a lotação de quem está nela. Desligado, só entra quem está na lista.
+            </span>
+          </span>
+        </label>
       )}
 
       {result && (
