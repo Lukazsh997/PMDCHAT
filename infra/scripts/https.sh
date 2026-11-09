@@ -23,7 +23,17 @@ CA_DIR=infra/nginx/ca     # chave da AC interna: fica só na VM, nunca vai para 
 SERVER_DAYS=825           # limite aceito por todos os navegadores e sistemas
 CA_DAYS=3650
 
-die() { echo "Erro: $*" >&2; exit 1; }
+die() { printf 'Erro: %b\n' "$*" >&2; exit 1; }
+
+# Roda o openssl sem o ruído de progresso; se falhar, mostra a saída real (que o
+# -2>/dev/null antes escondia) e devolve erro para quem chamou tratar.
+ossl() {
+  local out
+  if ! out=$(openssl "$@" 2>&1 >/dev/null); then
+    [[ -n "$out" ]] && printf '%s\n' "$out" >&2
+    return 1
+  fi
+}
 command -v openssl >/dev/null || die "openssl não encontrado (apt install openssl)."
 [[ -f .env ]] || die "Arquivo .env não encontrado. Rode infra/scripts/install.sh primeiro."
 grep -q $'\r' .env && sed -i 's/\r$//' .env
@@ -95,8 +105,9 @@ issue_server() {
   done
   san="${san%,}"
   mkdir -p "$tmp"
-  openssl req -new -newkey rsa:2048 -nodes -keyout "$tmp/server.key" \
-    -subj "/CN=$cn" -out "$tmp/server.csr" 2>/dev/null
+  ossl req -new -newkey rsa:2048 -nodes -keyout "$tmp/server.key" \
+    -subj "/CN=$cn" -out "$tmp/server.csr" ||
+    die "não consegui gerar a chave do certificado (veja o erro do OpenSSL acima)."
   cat > "$tmp/ext.cnf" <<EOF
 basicConstraints=critical,CA:FALSE
 keyUsage=critical,digitalSignature,keyEncipherment
@@ -105,11 +116,13 @@ subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid
 subjectAltName=$san
 EOF
-  openssl x509 -req -in "$tmp/server.csr" -CA "$CA_DIR/ca.crt" -CAkey "$CA_DIR/ca.key" \
+  # Assina o certificado com a AC interna. OpenSSL recente recusa aqui mesmo quando a AC
+  # não permite os nomes pedidos (versões antigas só reprovavam no 'verify' abaixo).
+  if ! ossl x509 -req -in "$tmp/server.csr" -CA "$CA_DIR/ca.crt" -CAkey "$CA_DIR/ca.key" \
     -CAcreateserial -CAserial "$CA_DIR/ca.srl" -days "$SERVER_DAYS" -sha256 \
-    -extfile "$tmp/ext.cnf" -out "$tmp/server.crt" 2>/dev/null
-  if ! openssl verify -CAfile "$CA_DIR/ca.crt" "$tmp/server.crt" >/dev/null 2>&1; then
-    die "o certificado não passou na verificação da AC interna. Algum nome está fora dos permitidos pela AC (veja 'https.sh status'); para novos domínios, apague $CA_DIR e gere uma AC nova."
+    -extfile "$tmp/ext.cnf" -out "$tmp/server.crt" ||
+    ! openssl verify -CAfile "$CA_DIR/ca.crt" "$tmp/server.crt" >/dev/null 2>&1; then
+    die "a AC interna atual não cobre os endereços pedidos (${san//,/, }) — provavelmente foi criada para outros nomes.\nSe ela ainda NÃO foi distribuída às estações, apague e gere uma nova:\n  sudo rm -rf $CA_DIR $CERTS && sudo infra/scripts/https.sh interna"
   fi
   mkdir -p "$CERTS"
   install -m 600 "$tmp/server.key" "$CERTS/server.key"
@@ -132,13 +145,14 @@ create_ca() {
   [[ -n "$nc" ]] || nc="permitted;DNS:plataforma.invalid,"
   nc+="permitted;IP:10.0.0.0/255.0.0.0,permitted;IP:172.16.0.0/255.240.0.0,permitted;IP:192.168.0.0/255.255.0.0"
   mkdir -p "$CA_DIR"; chmod 700 "$CA_DIR"
-  openssl req -x509 -new -utf8 -newkey rsa:4096 -nodes -sha256 -days "$CA_DAYS" \
+  ossl req -x509 -new -utf8 -newkey rsa:4096 -nodes -sha256 -days "$CA_DAYS" \
     -keyout "$CA_DIR/ca.key" -out "$CA_DIR/ca.crt" \
     -subj "/O=$org/CN=AC interna da Comunicação Interna - $org" \
     -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
     -addext "keyUsage=critical,keyCertSign,cRLSign" \
     -addext "subjectKeyIdentifier=hash" \
-    -addext "nameConstraints=critical,$nc" 2>/dev/null
+    -addext "nameConstraints=critical,$nc" ||
+    die "não consegui criar a AC interna (veja o erro do OpenSSL acima)."
   chmod 600 "$CA_DIR/ca.key"
   echo "AC interna criada (vale até $(openssl x509 -in "$CA_DIR/ca.crt" -noout -enddate | cut -d= -f2))."
 }
