@@ -20,6 +20,7 @@ export const PERMISSIONS = {
   'conversations.create_channel': 'Criar canais de aviso',
   'users.delete': 'Excluir usuários definitivamente do diretório',
   'roles.manage': 'Criar e editar papéis',
+  'settings.manage': 'Configurar a integração com o Active Directory',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -80,6 +81,7 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
   },
   { label: 'Organograma', permissions: ['org.manage'] },
   { label: 'Papéis e auditoria', permissions: ['roles.assign', 'roles.manage', 'audit.read'] },
+  { label: 'Integrações', permissions: ['settings.manage'] },
   {
     label: 'Comunicação',
     permissions: ['broadcast.send', 'conversations.create_channel'],

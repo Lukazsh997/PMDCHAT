@@ -16,6 +16,11 @@ export const ALLOW_PENDING_PASSWORD = 'allowPendingPassword';
 /** Rota liberada mesmo quando o usuário precisa trocar a senha. */
 export const AllowPendingPasswordChange = () => SetMetadata(ALLOW_PENDING_PASSWORD, true);
 
+export const ALLOW_PENDING_ORG_UNIT = 'allowPendingOrgUnit';
+
+/** Rota acessível enquanto a pessoa ainda não escolheu o setor no 1º acesso. */
+export const AllowPendingOrgUnit = () => SetMetadata(ALLOW_PENDING_ORG_UNIT, true);
+
 /** Injeta o contexto de autenticação da requisição atual. */
 export const CurrentAuth = createParamDecorator((_: unknown, ctx: ExecutionContext) => {
   const req = ctx.switchToHttp().getRequest<FastifyRequest>();

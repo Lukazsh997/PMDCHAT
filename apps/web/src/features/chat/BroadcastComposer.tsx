@@ -1,6 +1,6 @@
 import { BROADCAST_RULES, type DirectoryUser, MESSAGE_RULES } from '@plataforma/contracts';
-import { Check, Megaphone, Paperclip, Users, X } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { Check, ChevronRight, Megaphone, Paperclip, Users, X } from 'lucide-react';
+import { type ReactNode, useMemo, useRef, useState } from 'react';
 import { Alert, Avatar, Button, Dialog, IconButton, toast } from '@/components/ui';
 import { newClientId } from '@/lib/format';
 import {
@@ -67,6 +67,16 @@ function ComposerBody({ onDone, initialUnit }: { onDone: () => void; initialUnit
   // Todos os setores aparecem. Sem a permissão de comunicado sobre o setor, o envio
   // vale como mensagens individuais e fica limitado (o servidor confere).
   const allUnits = useMemo(() => [...(tree.model?.byId.values() ?? [])], [tree.model]);
+  const roots = useMemo(() => tree.model?.roots ?? [], [tree.model]);
+  // Ramos abertos na árvore. O órgão (raiz) já vem aberto, mostrando as secretarias.
+  const [opened, setOpened] = useState<Set<string> | null>(null);
+  const expanded = opened ?? new Set(roots.map((r) => r.id));
+  const toggleExpanded = (id: string) => {
+    const next = new Set(expanded);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setOpened(next);
+  };
   const hasPermission = !!scopes.data && (scopes.data.global || scopes.data.unitIds.length > 0);
 
   const targets = useMemo(
@@ -128,68 +138,101 @@ function ComposerBody({ onDone, initialUnit }: { onDone: () => void; initialUnit
     );
   }
 
+  /** Linha de um setor (na árvore ou no resultado da busca). */
+  const unitRow = (n: TreeNode, opts: { indent?: number; showPath: boolean }) => {
+    const on = units.some((u) => u.node.id === n.id);
+    const full = canBroadcastTo(scopes.data, n);
+    const hasChildren = n.children.length > 0;
+    const isOpen = expanded.has(n.id);
+    return (
+      <li key={n.id} className="flex items-center" style={{ paddingLeft: opts.indent }}>
+        {opts.indent !== undefined &&
+          (hasChildren ? (
+            <button
+              type="button"
+              onClick={() => toggleExpanded(n.id)}
+              aria-expanded={isOpen}
+              aria-label={`${isOpen ? 'Recolher' : 'Mostrar'} as unidades de ${n.name}`}
+              className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted hover:bg-line/40 hover:text-ink"
+            >
+              <ChevronRight
+                size={16}
+                aria-hidden="true"
+                className={`transition-transform ${isOpen ? 'rotate-90' : ''}`}
+              />
+            </button>
+          ) : (
+            <span className="w-6 shrink-0" aria-hidden="true" />
+          ))}
+        <button
+          type="button"
+          onClick={() => toggleUnit(n)}
+          aria-pressed={on}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-[var(--radius-control)] px-2 py-1.5 text-left hover:bg-line/40"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
+            <Users size={16} aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-semibold">
+              {n.name}
+              {n.acronym && <span className="ml-1 font-normal text-muted">({n.acronym})</span>}
+            </span>
+            <span className="block truncate text-xs text-muted">
+              {n.totalMembers} {n.totalMembers === 1 ? 'pessoa' : 'pessoas'}
+              {opts.showPath && n.ancestors.length
+                ? ` · ${n.ancestors.map((a) => a.acronym || a.name).join(' › ')}`
+                : ''}
+              {!full && n.totalMembers > BROADCAST_RULES.maxPeopleWithoutPermission && (
+                <span className="text-danger">
+                  {' '}
+                  · acima do seu limite de {BROADCAST_RULES.maxPeopleWithoutPermission}
+                </span>
+              )}
+            </span>
+          </span>
+          <span
+            aria-hidden="true"
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${on ? 'border-primary bg-primary text-primary-ink' : 'border-line'}`}
+          >
+            {on && <Check size={14} />}
+          </span>
+        </button>
+      </li>
+    );
+  };
+
+  /** Árvore do organograma, abrindo e fechando os ramos (órgão › secretarias › …). */
+  const treeRows = (nodes: TreeNode[], level: number): ReactNode[] =>
+    [...nodes]
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+      .flatMap((n) => [
+        unitRow(n, { indent: level * 16, showPath: false }),
+        ...(expanded.has(n.id) ? treeRows(n.children, level + 1) : []),
+      ]);
+
   const unitResults = (q: string) => {
     if (!allUnits.length) return null;
     const term = normalize(q);
-    const list = (
-      term
-        ? allUnits.filter(
-            (n) => normalize(n.name).includes(term) || normalize(n.acronym ?? '').includes(term),
-          )
-        : allUnits.filter((n) => n.depth <= 1)
-    )
-      .sort((a, b) => a.depth - b.depth || a.name.localeCompare(b.name, 'pt-BR'))
-      .slice(0, term ? 12 : 6);
-    if (!list.length) return null;
+    let rows: ReactNode[];
+    if (term) {
+      // Na busca aparecem todos os setores que batem, em qualquer nível, com o caminho.
+      const matches = allUnits
+        .filter(
+          (n) => normalize(n.name).includes(term) || normalize(n.acronym ?? '').includes(term),
+        )
+        .sort((a, b) => a.depth - b.depth || a.name.localeCompare(b.name, 'pt-BR'));
+      if (!matches.length) return null;
+      rows = matches.map((n) => unitRow(n, { showPath: true }));
+    } else {
+      rows = treeRows(roots, 0);
+    }
     return (
       <>
         <li className="px-2 pt-1 pb-0.5 text-[11px] font-bold tracking-wide text-muted uppercase">
           Setores
         </li>
-        {list.map((n) => {
-          const on = units.some((u) => u.node.id === n.id);
-          const full = canBroadcastTo(scopes.data, n);
-          return (
-            <li key={n.id}>
-              <button
-                type="button"
-                onClick={() => toggleUnit(n)}
-                aria-pressed={on}
-                className="flex w-full items-center gap-3 rounded-[var(--radius-control)] px-2 py-2 text-left hover:bg-line/40"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
-                  <Users size={17} aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold">
-                    {n.name}
-                    {n.acronym && (
-                      <span className="ml-1 font-normal text-muted">({n.acronym})</span>
-                    )}
-                  </span>
-                  <span className="block truncate text-xs text-muted">
-                    {n.totalMembers} {n.totalMembers === 1 ? 'pessoa' : 'pessoas'}
-                    {n.ancestors.length
-                      ? ` · ${n.ancestors.map((a) => a.acronym || a.name).join(' › ')}`
-                      : ''}
-                    {!full && n.totalMembers > BROADCAST_RULES.maxPeopleWithoutPermission && (
-                      <span className="text-danger">
-                        {' '}
-                        · acima do seu limite de {BROADCAST_RULES.maxPeopleWithoutPermission}
-                      </span>
-                    )}
-                  </span>
-                </span>
-                <span
-                  aria-hidden="true"
-                  className={`flex h-5 w-5 items-center justify-center rounded border ${on ? 'border-primary bg-primary text-primary-ink' : 'border-line'}`}
-                >
-                  {on && <Check size={14} />}
-                </span>
-              </button>
-            </li>
-          );
-        })}
+        {rows}
         <li className="px-2 pt-2 pb-0.5 text-[11px] font-bold tracking-wide text-muted uppercase">
           Pessoas
         </li>
@@ -273,7 +316,7 @@ function ComposerBody({ onDone, initialUnit }: { onDone: () => void; initialUnit
           onToggle={togglePerson}
           placeholder="Buscar pessoa ou setor"
           extra={unitResults}
-          listClassName="max-h-52"
+          listClassName="max-h-80"
         />
         {limit !== null && (
           <p className={`mt-1 text-xs ${overLimit ? 'font-semibold text-danger' : 'text-muted'}`}>

@@ -68,6 +68,8 @@ export class RealtimeService implements BeforeApplicationShutdown {
     this.presence = new PresenceStore(redis);
   }
 
+  private closing = false;
+
   attach(server: HttpServer): void {
     // Sem autopipelining: o unsubscribe do encerramento sai antes do QUIT.
     const pub = this.redis.duplicate({ enableAutoPipelining: false });
@@ -91,6 +93,7 @@ export class RealtimeService implements BeforeApplicationShutdown {
         const token = readCookie(socket.handshake.headers.cookie, this.config.SESSION_COOKIE_NAME);
         const auth = await authenticate(token, this.sessions, this.users);
         if (auth.user.mustChangePassword) throw new Error('troca de senha pendente');
+        if (auth.user.mustChooseOrgUnit) throw new Error('escolha de setor pendente');
         socket.data = {
           userId: auth.user.id,
           sessionId: auth.session.id,
@@ -110,6 +113,7 @@ export class RealtimeService implements BeforeApplicationShutdown {
 
   /** Fecha as conexões antes que o Valkey e o banco sejam encerrados. */
   async beforeApplicationShutdown(): Promise<void> {
+    this.closing = true;
     clearInterval(this.timer);
     await new Promise<void>((r) => (this.io ? this.io.close(() => r()) : r()));
     await Promise.all(this.subscribers.map((c) => c.quit().catch(() => c.disconnect())));
@@ -167,6 +171,9 @@ export class RealtimeService implements BeforeApplicationShutdown {
   }
 
   private async publishPresence(userId: string, status: Awaited<ReturnType<PresenceStore['set']>>) {
+    // No desligamento, as desconexões chegam com o Valkey já fechando: o adaptador do
+    // Socket.IO rejeitaria a publicação sem ninguém para tratar.
+    if (this.closing) return;
     if (status) this.io?.to(`presence:${userId}`).emit('presence.changed', { userId, status });
   }
 

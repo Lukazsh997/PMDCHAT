@@ -9,3 +9,7 @@ data/
 backups/
 playwright-report
 test-results
+
+# Certificados e chaves do HTTPS (infra/scripts/https.sh): nunca versionar.
+infra/nginx/certs/*
+!infra/nginx/certs/.gitkeep

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router';
 import { Alert, Button, Spinner } from '@/components/ui';
 import { useMe } from './auth-api';
+import { ChooseOrgUnitPage } from './ChooseOrgUnitPage';
 import { ForcedPasswordChangePage } from './ForcedPasswordChangePage';
 
 export function RequireAuth({ children }: { children: ReactNode }) {
@@ -28,6 +29,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   if (!me.data) return <Navigate to="/entrar" replace state={{ from: location.pathname }} />;
   if (me.data.user.mustChangePassword) {
     return <ForcedPasswordChangePage displayName={me.data.user.displayName} />;
+  }
+  if (me.data.user.mustChooseOrgUnit) {
+    return <ChooseOrgUnitPage displayName={me.data.user.displayName} />;
   }
   return children;
 }

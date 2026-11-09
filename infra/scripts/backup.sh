@@ -25,4 +25,16 @@ else
   echo "Anexos:  nenhum para copiar (pasta de anexos ainda não existe ou a API está parada)"
 fi
 
-find "$DEST" \( -name 'db-*.dump' -o -name 'files-*.tar.gz' \) -mtime +"$KEEP_DAYS" -delete
+# HTTPS: certificado e AC interna (sem a chave da AC, renovar exige redistribuir a AC).
+# Inclui só o que existe: uma tentativa interrompida pode ter deixado a AC sem os certificados.
+tls_paths=()
+[[ -d infra/nginx/ca ]] && tls_paths+=(infra/nginx/ca)
+[[ -d infra/nginx/certs ]] && tls_paths+=(infra/nginx/certs)
+if ((${#tls_paths[@]})); then
+  TLS_FILE="$DEST/https-$STAMP.tar.gz"
+  tar czf "$TLS_FILE" --exclude='infra/nginx/certs/desligado-*' "${tls_paths[@]}"
+  chmod 600 "$TLS_FILE"
+  echo "HTTPS:   $TLS_FILE"
+fi
+
+find "$DEST" \( -name 'db-*.dump' -o -name 'files-*.tar.gz' -o -name 'https-*.tar.gz' \) -mtime +"$KEEP_DAYS" -delete

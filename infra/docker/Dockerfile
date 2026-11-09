@@ -51,9 +51,14 @@ CMD ["api"]
 
 # ---- imagem web (Nginx) -----------------------------------------------------
 FROM ${NGINX_IMAGE} AS web
-COPY infra/nginx/default.conf /etc/nginx/conf.d/default.conf
-RUN sed -i 's/\r$//' /etc/nginx/conf.d/default.conf
+# HTTP ou HTTPS é decidido na subida, pela presença do certificado (40-plataforma.sh).
+COPY infra/nginx/app.conf infra/nginx/http.conf infra/nginx/https.conf /etc/nginx/plataforma/
+COPY infra/nginx/40-plataforma.sh /docker-entrypoint.d/40-plataforma.sh
+RUN sed -i 's/\r$//' /etc/nginx/plataforma/*.conf /docker-entrypoint.d/40-plataforma.sh \
+  && chmod +x /docker-entrypoint.d/40-plataforma.sh \
+  && rm -f /etc/nginx/conf.d/default.conf \
+  && mkdir -p /etc/nginx/certs
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
-EXPOSE 80
+EXPOSE 80 443
 HEALTHCHECK --interval=15s --timeout=3s --retries=3 \
   CMD wget -qO- http://127.0.0.1/nginx-health >/dev/null || exit 1

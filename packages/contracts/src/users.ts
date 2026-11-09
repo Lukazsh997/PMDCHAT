@@ -30,6 +30,8 @@ export interface PublicUser {
   authSource: AuthSource;
   orgUnit: OrgUnitRef | null;
   mustChangePassword: boolean;
+  /** Conta do AD fora da lista: precisa escolher o setor no 1º acesso. */
+  mustChooseOrgUnit: boolean;
   mfaEnabled: boolean;
   /** Endereço da foto de perfil (muda quando a foto é trocada), ou null. */
   avatarUrl: string | null;
@@ -152,3 +154,7 @@ export interface AdminStats {
   messagesLast24h: number;
   onlineNow: number;
 }
+
+/** Primeiro acesso de quem entrou pelo AD sem estar na lista: escolhe a lotação. */
+export const chooseOrgUnitSchema = z.object({ orgUnitId: z.uuid() });
+export type ChooseOrgUnitRequest = z.infer<typeof chooseOrgUnitSchema>;
