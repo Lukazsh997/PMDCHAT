@@ -145,9 +145,11 @@ create_ca() {
   [[ -n "$nc" ]] || nc="permitted;DNS:plataforma.invalid,"
   nc+="permitted;IP:10.0.0.0/255.0.0.0,permitted;IP:172.16.0.0/255.240.0.0,permitted;IP:192.168.0.0/255.255.0.0"
   mkdir -p "$CA_DIR"; chmod 700 "$CA_DIR"
+  # CN e O têm limite de 64 caracteres (X.509). O nome do órgão fica em O; o CN é curto.
+  local cn="AC interna - $org"
   ossl req -x509 -new -utf8 -newkey rsa:4096 -nodes -sha256 -days "$CA_DAYS" \
     -keyout "$CA_DIR/ca.key" -out "$CA_DIR/ca.crt" \
-    -subj "/O=$org/CN=AC interna da Comunicação Interna - $org" \
+    -subj "/O=${org:0:64}/CN=${cn:0:64}" \
     -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
     -addext "keyUsage=critical,keyCertSign,cRLSign" \
     -addext "subjectKeyIdentifier=hash" \
