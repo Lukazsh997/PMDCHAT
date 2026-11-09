@@ -26,10 +26,13 @@ else
 fi
 
 # HTTPS: certificado e AC interna (sem a chave da AC, renovar exige redistribuir a AC).
-if [[ -d infra/nginx/ca || -s infra/nginx/certs/server.crt ]]; then
+# Inclui só o que existe: uma tentativa interrompida pode ter deixado a AC sem os certificados.
+tls_paths=()
+[[ -d infra/nginx/ca ]] && tls_paths+=(infra/nginx/ca)
+[[ -d infra/nginx/certs ]] && tls_paths+=(infra/nginx/certs)
+if ((${#tls_paths[@]})); then
   TLS_FILE="$DEST/https-$STAMP.tar.gz"
-  tar czf "$TLS_FILE" --exclude='infra/nginx/certs/desligado-*' \
-    $( [[ -d infra/nginx/ca ]] && echo infra/nginx/ca ) infra/nginx/certs
+  tar czf "$TLS_FILE" --exclude='infra/nginx/certs/desligado-*' "${tls_paths[@]}"
   chmod 600 "$TLS_FILE"
   echo "HTTPS:   $TLS_FILE"
 fi
