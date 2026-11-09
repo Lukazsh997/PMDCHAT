@@ -8,6 +8,104 @@
       "when": 1793751123729,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793811772452,
+      "tag": "0001_fase1_tabelas",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793811773065,
+      "tag": "0002_fase1_dados",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793811778701,
+      "tag": "0003_fase1_remove_super_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793885090913,
+      "tag": "0004_fase1_organograma_comunicados",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793888424403,
+      "tag": "0005_fase1_sem_moderador",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793893742107,
+      "tag": "0006_fase2_threads_reacoes_mencoes",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793894934020,
+      "tag": "0007_fase2_canais",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793895449560,
+      "tag": "0008_fase2_papeis",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793895766682,
+      "tag": "0009_fase2_push",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793904577583,
+      "tag": "0010_fase2_sem_threads",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793905988406,
+      "tag": "0011_fase2_sem_mencoes_reacao_unica",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793906509939,
+      "tag": "0012_fase3_active_directory",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793977783489,
+      "tag": "0013_fase3_lista_de_lotacao",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794183658206,
+      "tag": "0014_fase3_primeiro_acesso_setor",
+      "breakpoints": true
     }
   ]
 }

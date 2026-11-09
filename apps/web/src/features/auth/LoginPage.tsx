@@ -1,14 +1,16 @@
 import { loginRequestSchema } from '@plataforma/contracts';
+import { ShieldCheck } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Navigate } from 'react-router';
 import { Alert, Button, TextField } from '@/components/ui';
 import { ApiRequestError } from '@/lib/api';
 import { ORG_NAME } from '@/lib/config';
-import { useLogin, useMe } from './auth-api';
+import { isMfaChallenge, useLogin, useLoginMfa, useMe } from './auth-api';
 
 export function LoginPage() {
   const me = useMe();
   const login = useLogin();
+  const [challenge, setChallenge] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | undefined>>({});
 
   if (me.data) return <Navigate to="/" replace />;
@@ -27,7 +29,9 @@ export function LoginPage() {
       return;
     }
     setFieldErrors({});
-    login.mutate(parsed.data);
+    login.mutate(parsed.data, {
+      onSuccess: (r) => isMfaChallenge(r) && setChallenge(r.challengeId),
+    });
   }
 
   const apiError = login.error instanceof ApiRequestError ? login.error : null;
@@ -43,7 +47,7 @@ export function LoginPage() {
             Conversas, grupos e avisos da organização, num só lugar e dentro da nossa rede.
           </p>
         </div>
-        <div aria-hidden="true" className="absolute right-0 bottom-0 h-1.5 w-1/3 bg-ipe" />
+        <div aria-hidden="true" className="absolute right-0 bottom-0 h-1.5 w-1/3 bg-accent" />
       </section>
 
       <section className="flex items-center justify-center px-6 py-12">
@@ -52,41 +56,112 @@ export function LoginPage() {
             <LogoMark />
             <p className="mt-4 text-lg font-bold">{ORG_NAME}</p>
           </div>
-          <h1 className="text-xl font-bold">Entrar</h1>
-          <p className="mt-1 text-sm text-muted">
-            Use o usuário e a senha fornecidos pela sua unidade.
-          </p>
-
-          <form onSubmit={onSubmit} noValidate className="mt-6 flex flex-col gap-4">
-            {apiError && !apiError.fields.username && !apiError.fields.password && (
-              <Alert tone="error">{apiError.message}</Alert>
-            )}
-            <TextField
-              label="Usuário"
-              name="username"
-              autoComplete="username"
-              autoCapitalize="none"
-              spellCheck={false}
-              autoFocus
-              error={fields.username}
+          {challenge ? (
+            <MfaStep
+              challengeId={challenge}
+              onRestart={() => {
+                setChallenge(null);
+                login.reset();
+              }}
             />
-            <TextField
-              label="Senha"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              error={fields.password}
-            />
-            <Button type="submit" block loading={login.isPending} className="mt-2 h-10">
-              Entrar
-            </Button>
-          </form>
-          <p className="mt-6 text-xs text-muted">
-            Esqueceu a senha? Procure o administrador do sistema na sua unidade.
-          </p>
+          ) : (
+            <>
+              <h1 className="text-xl font-bold">Entrar</h1>
+              <p className="mt-1 text-sm text-muted">
+                Use o usuário e a senha fornecidos pela sua unidade.
+              </p>
+              <form onSubmit={onSubmit} noValidate className="mt-6 flex flex-col gap-4">
+                {apiError && !apiError.fields.username && !apiError.fields.password && (
+                  <Alert tone="error">{apiError.message}</Alert>
+                )}
+                <TextField
+                  label="Usuário"
+                  name="username"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  autoFocus
+                  error={fields.username}
+                />
+                <TextField
+                  label="Senha"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  error={fields.password}
+                />
+                <Button type="submit" block loading={login.isPending} className="mt-2 h-10">
+                  Entrar
+                </Button>
+              </form>
+              <p className="mt-6 text-xs text-muted">
+                Esqueceu a senha? Procure o administrador do sistema na sua unidade.
+              </p>
+            </>
+          )}
         </div>
       </section>
     </main>
+  );
+}
+
+function MfaStep({ challengeId, onRestart }: { challengeId: string; onRestart: () => void }) {
+  const verify = useLoginMfa();
+  const [code, setCode] = useState('');
+  const err = verify.error instanceof ApiRequestError ? verify.error : null;
+  const expired = err?.code === 'UNAUTHENTICATED';
+  return (
+    <>
+      <ShieldCheck size={28} className="text-primary" aria-hidden="true" />
+      <h1 className="mt-3 text-xl font-bold">Verificação em duas etapas</h1>
+      <p className="mt-1 text-sm text-muted">
+        Digite o código de 6 números que aparece no aplicativo autenticador do seu celular.
+      </p>
+      <form
+        className="mt-6 flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          verify.mutate({ challengeId, code });
+        }}
+      >
+        {err && <Alert tone="error">{err.message}</Alert>}
+        <TextField
+          label="Código"
+          name="code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          autoFocus
+          maxLength={6}
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+          className="[&_input]:text-center [&_input]:text-lg [&_input]:tracking-[0.4em]"
+        />
+        {expired ? (
+          <Button block onClick={onRestart} className="h-10">
+            Entrar novamente
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            block
+            loading={verify.isPending}
+            disabled={code.length !== 6}
+            className="h-10"
+          >
+            Confirmar
+          </Button>
+        )}
+      </form>
+      {!expired && (
+        <button
+          type="button"
+          onClick={onRestart}
+          className="mt-4 text-sm text-muted hover:text-ink hover:underline"
+        >
+          Voltar
+        </button>
+      )}
+    </>
   );
 }
 
@@ -102,7 +177,7 @@ function LogoMark() {
         d="M9 11.5a3.5 3.5 0 0 1 3.5-3.5h7a3.5 3.5 0 0 1 3.5 3.5v5a3.5 3.5 0 0 1-3.5 3.5H15l-4.2 3.4c-.5.4-1.3 0-1.3-.6V19.6A3.5 3.5 0 0 1 9 16.5z"
         className="fill-rail-ink"
       />
-      <circle cx="22.5" cy="9.5" r="3.5" className="fill-ipe" />
+      <circle cx="22.5" cy="9.5" r="3.5" className="fill-accent" />
     </svg>
   );
 }

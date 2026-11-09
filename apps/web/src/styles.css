@@ -2,29 +2,38 @@
 @import '@fontsource-variable/atkinson-hyperlegible-next';
 
 /*
- * Tokens do design system.
- * Petróleo (rail) dá a identidade institucional e calma; o amarelo-ipê é reservado
- * ao que pede atenção (não lidas, menções, foco sobre fundo escuro). Nada mais usa cor.
+ * Tokens do design system. Paleta institucional:
+ *   #222222 grafite · #FFFFFF branco · #1C5D99 azul · #19D9FF ciano · #BBCDE5 azul-claro
+ * O azul é a cor de ação (botões, links, foco); o ciano é reservado ao que pede atenção
+ * (não lidas, item ativo na barra lateral). Os neutros são tons do grafite e do azul-claro.
+ * Verde, âmbar e vermelho ficam só para estados (disponível, ausente, erro).
  */
 @theme {
   --font-sans: 'Atkinson Hyperlegible Next Variable', system-ui, 'Segoe UI', sans-serif;
 
-  --color-paper: #f7f8f6;
+  --color-paper: #f3f6fa;
   --color-surface: #ffffff;
-  --color-ink: #1c2b36;
-  --color-muted: #5e6b70;
-  --color-line: #d9ded9;
-  --color-rail: #0f3d3e;
-  --color-rail-strong: #0a2d2e;
-  --color-rail-ink: #e7efed;
-  --color-ipe: #e3a82b;
-  --color-primary: #0f3d3e;
-  --color-primary-strong: #0a2d2e;
+  --color-ink: #222222;
+  --color-muted: #5a6472;
+  --color-line: #d5deeb;
+  --color-rail: #222222;
+  --color-rail-strong: #121212;
+  --color-rail-ink: #ffffff;
+  --color-accent: #19d9ff;
+  --color-accent-soft: #dff4fb;
+  --color-primary: #1c5d99;
+  --color-primary-strong: #164a7a;
   --color-primary-ink: #ffffff;
+  --color-primary-soft: #e6eef7;
   --color-danger: #b3261e;
   --color-danger-soft: #fbeceb;
   --color-ok: #2e7d4f;
   --color-ok-soft: #e8f3ec;
+  --color-away: #d99a1e;
+  --color-bubble-own: #bbcde5;
+  --color-bubble-other: #ffffff;
+  --color-chat-bg: #e9eff6;
+  --color-read: #1c5d99;
 
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
@@ -40,18 +49,26 @@
 @layer base {
   @media (prefers-color-scheme: dark) {
     :root {
-      --color-paper: #12191d;
-      --color-surface: #182227;
-      --color-ink: #e6ebe8;
-      --color-muted: #9aa7ab;
-      --color-line: #2a363c;
-      --color-rail: #0b2a2b;
-      --color-rail-strong: #071f20;
-      --color-primary: #86c4ba;
-      --color-primary-strong: #a3d6cd;
-      --color-primary-ink: #0a2d2e;
+      --color-paper: #1a1a1a;
+      --color-surface: #222222;
+      --color-ink: #f2f4f7;
+      --color-muted: #a5afbc;
+      --color-line: #363a40;
+      --color-rail: #141414;
+      --color-rail-strong: #0a0a0a;
+      --color-primary: #bbcde5;
+      --color-primary-strong: #d6e2f1;
+      --color-primary-ink: #222222;
+      --color-primary-soft: #26313f;
+      --color-accent-soft: #10343d;
+      --color-danger: #ff8a80;
       --color-danger-soft: #3a1d1b;
+      --color-ok: #6fd39a;
       --color-ok-soft: #173024;
+      --color-bubble-own: #1c5d99;
+      --color-bubble-other: #2b2b2b;
+      --color-chat-bg: #1a1a1a;
+      --color-read: #19d9ff;
     }
   }
 
@@ -72,7 +89,7 @@
   }
   @media (prefers-color-scheme: dark) {
     :focus-visible {
-      outline-color: var(--color-ipe);
+      outline-color: var(--color-accent);
     }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -82,5 +99,30 @@
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+@layer components {
+  /* Mensagens fora da tela não são desenhadas: mantém a rolagem leve em PCs modestos. */
+  .msg-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+  }
+  /* Mensagem aberta pela busca: destaque que some sozinho. */
+  .msg-focus {
+    animation: msg-focus 2.4s ease-out;
+    border-radius: 12px;
+  }
+  @keyframes msg-focus {
+    0%,
+    40% {
+      background: color-mix(in srgb, var(--color-accent) 28%, transparent);
+    }
+    100% {
+      background: transparent;
+    }
+  }
+  dialog::backdrop {
+    background: rgb(10 20 24 / 0.45);
   }
 }

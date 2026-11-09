@@ -1,9 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { PublicUser } from '@plataforma/contracts';
-import { and, count, eq, isNull } from 'drizzle-orm';
+import {
+  API_PREFIX,
+  type DirectoryUser,
+  type OrgUnitRef,
+  type PublicUser,
+} from '@plataforma/contracts';
+import { and, count, eq, inArray, isNull } from 'drizzle-orm';
+import { AppException } from '../../common/app-exception.js';
 import { DB, type Database } from '../../database/database.js';
 import {
   type NewUserRow,
+  orgUnits,
+  type OrgUnitRow,
   userCredentials,
   type UserCredentialsRow,
   type UserRow,
@@ -15,9 +23,41 @@ export interface CreateUserInput {
   displayName: string;
   email?: string | null;
   jobTitle?: string | null;
+  orgUnitId?: string | null;
+  kind?: 'member' | 'guest';
+  accessExpiresAt?: Date | null;
   passwordHash: string;
-  isSuperAdmin?: boolean;
   mustChangePassword?: boolean;
+}
+
+/** Usuário carregado com o que as requisições autenticadas precisam. */
+export interface LoadedUser {
+  user: UserRow;
+  orgUnit: OrgUnitRow | null;
+  mfaEnabled: boolean;
+}
+
+export function unitRef(u: Pick<OrgUnitRow, 'id' | 'name' | 'acronym'> | null): OrgUnitRef | null {
+  return u ? { id: u.id, name: u.name, acronym: u.acronym } : null;
+}
+
+/** Endereço da foto: o nome do arquivo entra na URL, então trocar a foto invalida o cache. */
+export function avatarUrl(u: Pick<UserRow, 'id' | 'avatarKey'>): string | null {
+  if (!u.avatarKey) return null;
+  const version = u.avatarKey
+    .split('/')
+    .pop()!
+    .replace(/\.webp$/, '');
+  return `${API_PREFIX}/users/${u.id}/avatar?v=${version}`;
+}
+
+/** Usuário pode usar o sistema agora? (ativo e, se convidado, dentro do prazo). */
+export function isUsable(u: Pick<UserRow, 'status' | 'accessExpiresAt' | 'deletedAt'>): boolean {
+  return (
+    u.status === 'active' &&
+    !u.deletedAt &&
+    (!u.accessExpiresAt || u.accessExpiresAt.getTime() > Date.now())
+  );
 }
 
 @Injectable()
@@ -33,7 +73,18 @@ export class UsersService {
     return row;
   }
 
-  /** Busca o usuário e suas credenciais para o fluxo de login. */
+  /** Uma consulta por requisição autenticada: usuário, lotação e estado do MFA. */
+  async load(id: string): Promise<LoadedUser | undefined> {
+    const [row] = await this.db
+      .select({ user: users, orgUnit: orgUnits, mfaEnabledAt: userCredentials.mfaEnabledAt })
+      .from(users)
+      .leftJoin(orgUnits, eq(orgUnits.id, users.orgUnitId))
+      .leftJoin(userCredentials, eq(userCredentials.userId, users.id))
+      .where(and(eq(users.id, id), isNull(users.deletedAt)))
+      .limit(1);
+    return row && { user: row.user, orgUnit: row.orgUnit, mfaEnabled: !!row.mfaEnabledAt };
+  }
+
   async findForLogin(
     username: string,
   ): Promise<{ user: UserRow; credentials: UserCredentialsRow | null } | undefined> {
@@ -67,7 +118,9 @@ export class UsersService {
         displayName: input.displayName,
         email: input.email ?? null,
         jobTitle: input.jobTitle ?? null,
-        isSuperAdmin: input.isSuperAdmin ?? false,
+        orgUnitId: input.orgUnitId ?? null,
+        kind: input.kind ?? 'member',
+        accessExpiresAt: input.accessExpiresAt ?? null,
         mustChangePassword: input.mustChangePassword ?? false,
       };
       const [user] = await tx.insert(users).values(values).returning();
@@ -110,7 +163,48 @@ export class UsersService {
     });
   }
 
-  toPublic(u: UserRow): PublicUser {
+  async setMfa(userId: string, secretEnc: string | null): Promise<void> {
+    await this.db
+      .update(userCredentials)
+      .set({ mfaSecretEnc: secretEnc, mfaEnabledAt: secretEnc ? new Date() : null })
+      .where(eq(userCredentials.userId, userId));
+  }
+  /**
+   * Primeiro acesso de quem entrou pelo AD sem estar na lista: grava a lotação escolhida
+   * e libera o acesso. Só vale enquanto a escolha estiver pendente (não troca a lotação
+   * depois — isso é com o administrador). O setor precisa existir e estar ativo.
+   */
+  async chooseOrgUnit(userId: string, orgUnitId: string): Promise<void> {
+    const [unit] = await this.db
+      .select({ id: orgUnits.id, isActive: orgUnits.isActive })
+      .from(orgUnits)
+      .where(eq(orgUnits.id, orgUnitId))
+      .limit(1);
+    if (!unit || !unit.isActive) {
+      throw new AppException(400, 'VALIDATION_FAILED', 'Setor inválido ou inativo.');
+    }
+    const res = await this.db
+      .update(users)
+      .set({ orgUnitId, mustChooseOrgUnit: false })
+      .where(and(eq(users.id, userId), eq(users.mustChooseOrgUnit, true)))
+      .returning({ id: users.id });
+    if (!res.length) {
+      throw new AppException(409, 'CONFLICT', 'A lotação já foi definida.');
+    }
+  }
+
+  /** Pessoas para exibir (diretório, membros de conversa), com a lotação. */
+  async directoryUsers(ids: string[]): Promise<Map<string, DirectoryUser>> {
+    if (!ids.length) return new Map();
+    const rows = await this.db
+      .select({ user: users, unit: orgUnits })
+      .from(users)
+      .leftJoin(orgUnits, eq(orgUnits.id, users.orgUnitId))
+      .where(inArray(users.id, [...new Set(ids)]));
+    return new Map(rows.map((r) => [r.user.id, toDirectory(r.user, r.unit)]));
+  }
+
+  toPublic(u: UserRow, unit: OrgUnitRow | null, mfaEnabled: boolean): PublicUser {
     return {
       id: u.id,
       username: u.username,
@@ -118,9 +212,26 @@ export class UsersService {
       email: u.email,
       jobTitle: u.jobTitle,
       status: u.status,
+      kind: u.kind,
       authSource: u.authSource,
-      isSuperAdmin: u.isSuperAdmin,
+      orgUnit: unitRef(unit),
       mustChangePassword: u.mustChangePassword,
+      mustChooseOrgUnit: u.mustChooseOrgUnit,
+      mfaEnabled,
+      avatarUrl: avatarUrl(u),
     };
   }
+}
+
+export function toDirectory(u: UserRow, unit: OrgUnitRow | null): DirectoryUser {
+  return {
+    id: u.id,
+    displayName: u.displayName,
+    username: u.username,
+    jobTitle: u.jobTitle,
+    kind: u.kind,
+    orgUnit: unitRef(unit),
+    avatarUrl: avatarUrl(u),
+    ...(u.deletedAt ? { removed: true as const } : {}),
+  };
 }

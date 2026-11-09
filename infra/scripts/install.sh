@@ -31,6 +31,8 @@ if [[ ! -f .env ]]; then
       -e "s|^DATABASE_URL=.*|DATABASE_URL=postgres://plataforma:${db_pass}@localhost:5432/plataforma|" \
       -e "s|^BOOTSTRAP_ADMIN_PASSWORD=.*|BOOTSTRAP_ADMIN_PASSWORD=${admin_pass}|" \
       -e "s|^NODE_ENV=.*|NODE_ENV=production|" \
+      -e "s|^APP_SECRET=.*|APP_SECRET=$(openssl rand -hex 32)|" \
+      -e "/^FILES_DIR=/d" \
       > .env
   chmod 600 .env
   echo
@@ -38,13 +40,9 @@ if [[ ! -f .env ]]; then
   echo "Senha provisória do usuário 'admin': ${admin_pass}"
   echo "Ela será trocada no primeiro acesso. Guarde-a agora."
   echo
-else
-  # .env já existe (ex.: instalação anterior). Remove CRLF, se houver.
-  if grep -q $'\r' .env; then
-    sed -i 's/\r$//' .env
-    echo "Quebras de linha do Windows removidas do .env."
-  fi
 fi
+# Instalação anterior: acrescenta variáveis novas sem alterar as existentes.
+infra/scripts/upgrade-env.sh
 
 # Confere APP_ORIGINS antes de subir, para não falhar dentro do contêiner.
 origins=$(grep -E '^APP_ORIGINS=' .env | cut -d= -f2- | tr -d '"')
@@ -57,7 +55,9 @@ for o in "${list[@]}"; do
   fi
 done
 
-if ! docker compose up -d --build --wait --wait-timeout 180; then
+echo "Construindo e subindo os serviços. Na primeira vez o antivírus baixa as"
+echo "assinaturas de vírus, o que pode levar alguns minutos."
+if ! docker compose up -d --build --wait --wait-timeout 600; then
   echo
   echo "A plataforma não subiu. Últimas linhas do log da API:"
   echo "--------------------------------------------------------------"
@@ -67,3 +67,6 @@ if ! docker compose up -d --build --wait --wait-timeout 180; then
   exit 1
 fi
 echo "Plataforma no ar: ${origins%%,*}"
+if [[ ! -s infra/nginx/certs/server.crt ]]; then
+  echo "Para ligar o HTTPS (sem custo): infra/scripts/https.sh interna — ver docs/implantacao.md."
+fi

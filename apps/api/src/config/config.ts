@@ -47,6 +47,28 @@ export const configSchema = z.object({
   LOGIN_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(10),
   API_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(600),
 
+  /**
+   * Chave usada para cifrar dados sensíveis no banco (segredos do MFA). Gerada pelo
+   * install.sh. Trocá-la invalida os MFAs já ativados.
+   */
+  APP_SECRET: z.string().min(32, 'APP_SECRET precisa ter ao menos 32 caracteres').optional(),
+  MFA_REQUIRED_FOR_ADMINS: bool.default(true),
+
+  /** Pasta onde os anexos são gravados. */
+  FILES_DIR: z.string().default('./data/files'),
+  /** Antivírus (clamd). Vazio desativa a verificação. */
+  CLAMAV_HOST: z.string().optional(),
+  CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
+  /** Recusar uploads quando o antivírus estiver fora do ar. */
+  CLAMAV_REQUIRED: bool.default(true),
+
+  /** Web Push (notificações com a aba fechada). Precisa de internet até o serviço do Google. */
+  PUSH_ENABLED: bool.default(true),
+  /** Contato exigido pelo protocolo VAPID (mailto: ou https:). */
+  PUSH_SUBJECT: z.string().default('mailto:suporte@plataforma.local'),
+  /** Proxy HTTP(S) de saída da rede, se a VM precisar dele para chegar à internet. */
+  PUSH_PROXY: z.url().optional(),
+
   BOOTSTRAP_ADMIN_USERNAME: z.string().default('admin'),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
 });
@@ -57,8 +79,11 @@ export const APP_CONFIG = Symbol('APP_CONFIG');
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   // Remove espaços e \r finais: um .env salvo no Windows (CRLF) não deve derrubar o sistema.
+  // Variáveis vazias (ex.: `CLAMAV_HOST=`) valem como não definidas.
   const clean = Object.fromEntries(
-    Object.entries(env).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]),
+    Object.entries(env)
+      .map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v])
+      .filter(([, v]) => v !== ''),
   );
   const parsed = configSchema.safeParse(clean);
   if (!parsed.success) {
@@ -67,5 +92,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     );
     throw new Error(`Configuração inválida:\n${lines.join('\n')}`);
   }
-  return parsed.data;
+  const config = parsed.data;
+  if (!config.APP_SECRET) {
+    if (config.NODE_ENV === 'production') {
+      throw new Error(
+        'Configuração inválida:\n  - APP_SECRET: obrigatório em produção. Rode infra/scripts/install.sh para gerá-lo.',
+      );
+    }
+    config.APP_SECRET = 'desenvolvimento-apenas-nao-use-em-producao-0000';
+  }
+  return config;
 }

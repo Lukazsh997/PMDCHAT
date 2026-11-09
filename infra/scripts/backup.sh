@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Backup do banco de dados (formato custom do pg_dump, comprimido).
+# Backup do banco (pg_dump, formato custom) e dos anexos (tar.gz).
 # Agende no cron da VM, ex.: 30 2 * * * /opt/plataforma/infra/scripts/backup.sh
-# Os arquivos anexos (fase 1) entram neste script quando o volume existir.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -10,10 +9,32 @@ KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
 STAMP=$(date +%Y%m%d-%H%M%S)
 mkdir -p "$DEST"
 
-FILE="$DEST/db-$STAMP.dump"
+DB_FILE="$DEST/db-$STAMP.dump"
 # Usuário e banco vêm das variáveis do próprio contêiner do PostgreSQL.
-docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$FILE.partial"
-mv "$FILE.partial" "$FILE"
-echo "Backup do banco: $FILE ($(du -h "$FILE" | cut -f1))"
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$DB_FILE.partial"
+mv "$DB_FILE.partial" "$DB_FILE"
+echo "Banco:   $DB_FILE ($(du -h "$DB_FILE" | cut -f1))"
 
-find "$DEST" -name 'db-*.dump' -mtime +"$KEEP_DAYS" -delete
+# Anexos: só existem a partir da Fase 1 (numa atualização vinda da Fase 0, não há o que copiar).
+if docker compose exec -T api test -d /data/files 2>/dev/null; then
+  FILES_FILE="$DEST/files-$STAMP.tar.gz"
+  docker compose exec -T api tar czf - -C /data/files --exclude=./tmp . > "$FILES_FILE.partial"
+  mv "$FILES_FILE.partial" "$FILES_FILE"
+  echo "Anexos:  $FILES_FILE ($(du -h "$FILES_FILE" | cut -f1))"
+else
+  echo "Anexos:  nenhum para copiar (pasta de anexos ainda não existe ou a API está parada)"
+fi
+
+# HTTPS: certificado e AC interna (sem a chave da AC, renovar exige redistribuir a AC).
+# Inclui só o que existe: uma tentativa interrompida pode ter deixado a AC sem os certificados.
+tls_paths=()
+[[ -d infra/nginx/ca ]] && tls_paths+=(infra/nginx/ca)
+[[ -d infra/nginx/certs ]] && tls_paths+=(infra/nginx/certs)
+if ((${#tls_paths[@]})); then
+  TLS_FILE="$DEST/https-$STAMP.tar.gz"
+  tar czf "$TLS_FILE" --exclude='infra/nginx/certs/desligado-*' "${tls_paths[@]}"
+  chmod 600 "$TLS_FILE"
+  echo "HTTPS:   $TLS_FILE"
+fi
+
+find "$DEST" \( -name 'db-*.dump' -o -name 'files-*.tar.gz' -o -name 'https-*.tar.gz' \) -mtime +"$KEEP_DAYS" -delete

@@ -1,5 +1,5 @@
 import type { SessionDevice } from '@plataforma/contracts';
-import type { UserRow } from '../../database/schema/index.js';
+import type { OrgUnitRow, UserRow } from '../../database/schema/index.js';
 
 /** Sessão ativa, como guardada no Valkey. */
 export interface ActiveSession {
@@ -15,5 +15,7 @@ export interface ActiveSession {
 
 export interface AuthContext {
   user: UserRow;
+  orgUnit: OrgUnitRow | null;
+  mfaEnabled: boolean;
   session: ActiveSession;
 }

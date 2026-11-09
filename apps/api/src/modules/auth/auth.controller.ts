@@ -13,15 +13,25 @@ import {
 import {
   type ChangePasswordRequest,
   changePasswordRequestSchema,
+  type ChooseOrgUnitRequest,
+  chooseOrgUnitSchema,
+  type OrgUnit,
+  disableMfaSchema,
+  enableMfaSchema,
+  type LoginMfaChallenge,
+  type LoginMfaRequest,
+  loginMfaSchema,
   type LoginRequest,
   loginRequestSchema,
   type MeResponse,
+  type MfaSetupResponse,
   type SessionInfo,
 } from '@plataforma/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AppException } from '../../common/app-exception.js';
 import {
+  AllowPendingOrgUnit,
   AllowPendingPasswordChange,
   clientInfo,
   CurrentAuth,
@@ -29,9 +39,12 @@ import {
 } from '../../common/request-context.js';
 import { ZodPipe } from '../../common/zod.pipe.js';
 import { APP_CONFIG, type AppConfig } from '../../config/config.js';
+import { OrgService } from '../org/index.js';
+import { PermissionService, requestGrants } from '../rbac/index.js';
 import { UsersService } from '../users/index.js';
-import { AuthService } from './auth.service.js';
-import type { ActiveSession, AuthContext } from './auth.types.js';
+import { authenticate } from './auth.guard.js';
+import { AuthService, type LoginResult } from './auth.service.js';
+import type { AuthContext } from './auth.types.js';
 import { SessionService } from './session.service.js';
 
 const uuidParam = new ZodPipe(z.uuid());
@@ -43,6 +56,8 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
     private readonly users: UsersService,
+    private readonly permissions: PermissionService,
+    private readonly org: OrgService,
   ) {}
 
   @Public()
@@ -52,23 +67,30 @@ export class AuthController {
     @Body(new ZodPipe(loginRequestSchema)) body: LoginRequest,
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
-  ): Promise<MeResponse> {
+  ): Promise<MeResponse | LoginMfaChallenge> {
     const deviceType = req.headers['x-client'] === 'desktop' ? 'desktop' : 'web';
-    const { token, user, session } = await this.auth.login(body, {
+    const result = await this.auth.login(body, { ...clientInfo(req), deviceType });
+    return this.finish(result, req, reply);
+  }
+
+  @Public()
+  @Post('login/mfa')
+  @HttpCode(200)
+  async loginMfa(
+    @Body(new ZodPipe(loginMfaSchema)) body: LoginMfaRequest,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<MeResponse | LoginMfaChallenge> {
+    const deviceType = req.headers['x-client'] === 'desktop' ? 'desktop' : 'web';
+    const result = await this.auth.loginMfa(body.challengeId, body.code, {
       ...clientInfo(req),
       deviceType,
     });
-    void reply.setCookie(this.config.SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: this.config.COOKIE_SECURE,
-      sameSite: 'strict',
-      path: '/',
-      // Cookie de sessão do navegador; o servidor controla a expiração real.
-    });
-    return this.me(user, session);
+    return this.finish(result, req, reply);
   }
 
   @AllowPendingPasswordChange()
+  @AllowPendingOrgUnit()
   @Post('logout')
   @HttpCode(204)
   async logout(
@@ -81,9 +103,10 @@ export class AuthController {
   }
 
   @AllowPendingPasswordChange()
+  @AllowPendingOrgUnit()
   @Get('me')
-  getMe(@CurrentAuth() auth: AuthContext): MeResponse {
-    return this.me(auth.user, auth.session);
+  getMe(@CurrentAuth() auth: AuthContext, @Req() req: FastifyRequest): Promise<MeResponse> {
+    return this.me(auth, req);
   }
 
   @AllowPendingPasswordChange()
@@ -95,6 +118,60 @@ export class AuthController {
     @Req() req: FastifyRequest,
   ): Promise<void> {
     await this.auth.changePassword(auth, body, clientInfo(req));
+  }
+
+  /** Primeiro acesso (fora da lista): setores disponíveis para escolher. */
+  @AllowPendingOrgUnit()
+  @Get('onboarding/org-units')
+  async onboardingUnits(): Promise<OrgUnit[]> {
+    const units = await this.org.list();
+    return units.filter((u) => u.isActive);
+  }
+
+  /** Primeiro acesso (fora da lista): grava o setor escolhido e libera o acesso. */
+  @AllowPendingOrgUnit()
+  @Post('onboarding/org-unit')
+  @HttpCode(204)
+  async chooseOrgUnit(
+    @CurrentAuth() auth: AuthContext,
+    @Body(new ZodPipe(chooseOrgUnitSchema)) body: ChooseOrgUnitRequest,
+    @Req() req: FastifyRequest,
+  ): Promise<void> {
+    await this.auth.chooseOrgUnit(auth, body.orgUnitId, clientInfo(req));
+  }
+
+  @Post('mfa/setup')
+  @HttpCode(200)
+  mfaSetup(@CurrentAuth() auth: AuthContext): Promise<MfaSetupResponse> {
+    return this.auth.startMfaSetup(auth);
+  }
+
+  @Post('mfa/enable')
+  @HttpCode(204)
+  async mfaEnable(
+    @CurrentAuth() auth: AuthContext,
+    @Body(new ZodPipe(enableMfaSchema)) body: { code: string },
+    @Req() req: FastifyRequest,
+  ): Promise<void> {
+    await this.auth.enableMfa(auth, body.code, clientInfo(req));
+  }
+
+  @Post('mfa/disable')
+  @HttpCode(204)
+  async mfaDisable(
+    @CurrentAuth() auth: AuthContext,
+    @Body(new ZodPipe(disableMfaSchema)) body: { password: string },
+    @Req() req: FastifyRequest,
+  ): Promise<void> {
+    const grants = await requestGrants(req, this.permissions);
+    if (grants.requiresMfa && this.config.MFA_REQUIRED_FOR_ADMINS) {
+      throw new AppException(
+        409,
+        'CONFLICT',
+        'Administradores precisam manter a verificação em duas etapas.',
+      );
+    }
+    await this.auth.disableMfa(auth, body.password, clientInfo(req));
   }
 
   @Get('sessions')
@@ -115,10 +192,31 @@ export class AuthController {
     if (!ok) throw new AppException(404, 'NOT_FOUND', 'Sessão não encontrada');
   }
 
-  private me(user: AuthContext['user'], session: ActiveSession): MeResponse {
+  private async finish(
+    result: LoginResult,
+    req: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<MeResponse | LoginMfaChallenge> {
+    if (result.kind === 'mfa') return { mfaRequired: true, challengeId: result.challengeId };
+    void reply.setCookie(this.config.SESSION_COOKIE_NAME, result.token, {
+      httpOnly: true,
+      secure: this.config.COOKIE_SECURE,
+      sameSite: 'strict',
+      path: '/',
+    });
+    const auth = await authenticate(result.token, this.sessions, this.users);
+    return this.me(auth, req);
+  }
+
+  private async me(auth: AuthContext, req: FastifyRequest): Promise<MeResponse> {
+    req.auth = auth;
+    const grants = await requestGrants(req, this.permissions);
     return {
-      user: this.users.toPublic(user),
-      session: { id: session.id, expiresAt: session.expiresAt },
+      user: this.users.toPublic(auth.user, auth.orgUnit, auth.mfaEnabled),
+      session: { id: auth.session.id, expiresAt: auth.session.expiresAt },
+      permissions: grants.permissions,
+      mfaSetupRequired:
+        this.config.MFA_REQUIRED_FOR_ADMINS && grants.requiresMfa && !auth.mfaEnabled,
     };
   }
 }

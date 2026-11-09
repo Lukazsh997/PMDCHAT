@@ -32,7 +32,7 @@ export default tseslint.config(
           patterns: [
             {
               regex:
-                '^\\.\\./(?:\\.\\./)*(?:modules/)?(auth|users|audit|health|org|rbac|conversations|messages|realtime|notifications|files|search|admin|settings)/(?!index\\.js$).+',
+                '^\\.\\./(?:\\.\\./)*(?:modules/)?(auth|users|audit|health|org|rbac|directory|conversations|messages|realtime|notifications|files|search|admin|settings)/(?!index\\.js$).+',
               message: 'Importe outro módulo apenas pelo seu index.ts (ex.: ../users/index.js).',
             },
           ],
@@ -49,9 +49,29 @@ export default tseslint.config(
     },
   },
   {
+    files: ['apps/web/public/sw.js'],
+    languageOptions: { globals: globals.serviceworker },
+  },
+  {
     files: ['apps/web/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
     plugins: { 'react-hooks': reactHooks },
-    rules: reactHooks.configs.recommended.rules,
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      // A VM é acessada por HTTP (sem certificado): essas APIs não existem nesse contexto.
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'crypto',
+          property: 'randomUUID',
+          message: 'Indisponível em HTTP. Use newClientId() de @/lib/format.',
+        },
+        {
+          object: 'crypto',
+          property: 'subtle',
+          message: 'Indisponível em HTTP (fora de localhost).',
+        },
+      ],
+    },
   },
 );

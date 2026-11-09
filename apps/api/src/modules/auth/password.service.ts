@@ -1,4 +1,5 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
+import { randomInt } from 'node:crypto';
 import { type Algorithm, hash, type Options, parseOptions, verify } from '@node-rs/argon2';
 
 /**
@@ -19,6 +20,23 @@ export class PasswordService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     this.dummyHash = await hash('senha-inexistente-para-tempo-constante', ARGON2_OPTIONS);
+  }
+
+  /**
+   * Senha temporária legível para ditar ao usuário: 3 grupos de 4 caracteres, sem
+   * letras e números que se confundem (0/O, 1/l/I). Sempre tem letras e números.
+   */
+  generateTemporary(): string {
+    const letters = 'abcdefghjkmnpqrstuvwxyz';
+    const digits = '23456789';
+    const all = letters + digits;
+    const pick = (set: string) => set[randomInt(set.length)]!;
+    const groups = Array.from({ length: 3 }, () =>
+      Array.from({ length: 4 }, () => pick(all)).join(''),
+    );
+    groups[0] = pick(letters) + groups[0]!.slice(1);
+    groups[2] = groups[2]!.slice(0, 3) + pick(digits);
+    return groups.join('-');
   }
 
   hash(password: string): Promise<string> {
