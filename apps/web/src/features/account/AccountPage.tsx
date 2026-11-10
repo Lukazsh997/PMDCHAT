@@ -47,14 +47,12 @@ export function AccountPage() {
         </Section>
       )}
 
-      {user.authSource === 'local' && (
-        <Section
-          title="Verificação em duas etapas"
-          description="Além da senha, pede um código do seu celular ao entrar. Protege a conta mesmo se a senha vazar."
-        >
-          <MfaSection />
-        </Section>
-      )}
+      <Section
+        title="Verificação em duas etapas"
+        description="Ao entrar, pede um código do seu celular além da senha. Protege a conta mesmo se a senha vazar — e é obrigatória para quem administra o sistema."
+      >
+        <MfaSection />
+      </Section>
 
       <Section
         title="Dispositivos conectados"
