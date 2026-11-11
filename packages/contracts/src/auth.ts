@@ -5,7 +5,7 @@ import { z } from 'zod';
  * e na interface (para feedback imediato ao usuário).
  */
 export const PASSWORD_POLICY = {
-  minLength: 10,
+  minLength: 4,
   maxLength: 128,
 } as const;
 
@@ -17,6 +17,8 @@ export const usernameSchema = z
   .max(64, 'O usuário deve ter no máximo 64 caracteres')
   .regex(/^[a-z0-9._-]+$/, 'Use apenas letras minúsculas, números, ponto, hífen ou sublinhado');
 
+// Senha de usuário local (conta criada à mão). Sem exigência de "senha forte":
+// basta um mínimo curto de caracteres — a complexidade fica a critério de quem define.
 export const passwordSchema = z
   .string()
   .min(
@@ -26,8 +28,7 @@ export const passwordSchema = z
   .max(
     PASSWORD_POLICY.maxLength,
     `A senha deve ter no máximo ${PASSWORD_POLICY.maxLength} caracteres`,
-  )
-  .refine((v) => /[a-zA-Z]/.test(v) && /\d/.test(v), 'A senha deve conter letras e números');
+  );
 
 /**
  * Aceita o login como o Windows mostra: "ORGAO\\joao" e "joao@orgao.local" viram "joao".

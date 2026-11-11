@@ -65,7 +65,7 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
         name="newPassword"
         type="password"
         autoComplete="new-password"
-        hint={`Mínimo de ${PASSWORD_POLICY.minLength} caracteres, com letras e números.`}
+        hint={`Mínimo de ${PASSWORD_POLICY.minLength} caracteres.`}
         error={errors.newPassword}
       />
       <TextField

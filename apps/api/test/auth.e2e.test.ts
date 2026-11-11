@@ -242,7 +242,7 @@ describe('troca de senha', () => {
 
     const weak = await call(ctx, 'POST', '/auth/password', {
       cookie,
-      body: { currentPassword: password, newPassword: 'curta' },
+      body: { currentPassword: password, newPassword: 'ab' },
     });
     expect(weak.status).toBe(400);
     expect(weak.body?.fields?.newPassword).toBeDefined();
